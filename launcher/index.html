@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PinPlay Launcher</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #16161f;
+      --bg-card-hover: #1c1c28;
+      --bg-input: #0e0e16;
+      --border: #2a2a3a;
+      --border-glow: #6c5ce7;
+      --text-primary: #e8e8f0;
+      --text-secondary: #8888a0;
+      --text-muted: #555568;
+      --accent: #6c5ce7;
+      --accent-hover: #7f70f0;
+      --accent-glow: rgba(108, 92, 231, 0.3);
+      --green: #00d68f;
+      --green-glow: rgba(0, 214, 143, 0.2);
+      --red: #ff4757;
+      --red-glow: rgba(255, 71, 87, 0.2);
+      --yellow: #ffc048;
+      --yellow-glow: rgba(255, 192, 72, 0.2);
+      --orange: #ff7f50;
+      --lavalink-color: #ff6b6b;
+      --bot-color: #6c5ce7;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background:
+        radial-gradient(ellipse at 20% 20%, rgba(108, 92, 231, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(255, 107, 107, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 50%, rgba(0, 214, 143, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── Header ─────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      padding: 20px 28px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--lavalink-color));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 20px var(--accent-glow);
+      animation: logoPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 0 20px var(--accent-glow); }
+      50% { box-shadow: 0 0 35px var(--accent-glow), 0 0 60px rgba(108, 92, 231, 0.1); }
+    }
+
+    .header-title h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--text-primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-title p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    /* ── Buttons ─────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #5a4bd1);
+      border-color: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, var(--accent-hover), #6c5ce7);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .btn-danger {
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .btn-danger:hover {
+      background: rgba(255, 71, 87, 0.1);
+      box-shadow: 0 0 12px var(--red-glow);
+    }
+
+    .btn-success {
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .btn-success:hover {
+      background: rgba(0, 214, 143, 0.1);
+      box-shadow: 0 0 12px var(--green-glow);
+    }
+
+    .btn-mega {
+      padding: 16px 36px;
+      font-size: 15px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, var(--accent), var(--lavalink-color));
+      border: none;
+      color: white;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .btn-mega:hover {
+      box-shadow: 0 0 30px var(--accent-glow), 0 4px 20px rgba(0,0,0,0.3);
+      transform: translateY(-2px);
+    }
+
+    .btn-mega-stop {
+      padding: 16px 36px;
+      font-size: 15px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #ff4757, #c44569);
+      border: none;
+      color: white;
+      font-weight: 700;
+    }
+    .btn-mega-stop:hover {
+      box-shadow: 0 0 30px var(--red-glow);
+      transform: translateY(-2px);
+    }
+
+    /* ── Cards Grid ──────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      border-color: var(--border-glow);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .card-icon.lavalink {
+      background: rgba(255, 107, 107, 0.15);
+    }
+    .card-icon.bot {
+      background: rgba(108, 92, 231, 0.15);
+    }
+
+    .card-title h3 {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .card-title span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .card-actions .btn {
+      padding: 7px 14px;
+      font-size: 12px;
+    }
+
+    /* Status Badge */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .status.stopped { background: rgba(85, 85, 104, 0.2); color: var(--text-muted); }
+    .status.stopped .status-dot { background: var(--text-muted); }
+
+    .status.starting { background: var(--yellow-glow); color: var(--yellow); }
+    .status.starting .status-dot { background: var(--yellow); animation: blink 1s infinite; }
+
+    .status.running { background: var(--green-glow); color: var(--green); }
+    .status.running .status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    .status.error { background: var(--red-glow); color: var(--red); }
+    .status.error .status-dot { background: var(--red); }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── Quick Actions ────────────── */
+    .quick-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    /* ── Log Panel ────────────────── */
+    .log-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .log-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .log-tab {
+      flex: 1;
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      border-bottom: 2px solid transparent;
+    }
+
+    .log-tab:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+    .log-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(108, 92, 231, 0.05);
+    }
+
+    .log-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+    }
+
+    .log-toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .log-toolbar label {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .log-toolbar input[type="checkbox"] {
+      accent-color: var(--accent);
+    }
+
+    .log-toolbar .btn {
+      padding: 5px 12px;
+      font-size: 11px;
+    }
+
+    .log-container {
+      height: 400px;
+      overflow-y: auto;
+      padding: 12px 16px;
+      background: var(--bg-input);
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .log-container::-webkit-scrollbar { width: 6px; }
+    .log-container::-webkit-scrollbar-track { background: transparent; }
+    .log-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .log-container::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    .log-line {
+      padding: 1px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-line .time {
+      color: var(--text-muted);
+      margin-right: 8px;
+      font-size: 10px;
+    }
+
+    .log-line.error { color: var(--red); }
+    .log-line.warn { color: var(--yellow); }
+    .log-line.info { color: var(--green); }
+    .log-line.system { color: var(--accent); font-weight: 600; }
+
+    /* ── Toast ────────────────────── */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-primary);
+      box-shadow: var(--shadow);
+      animation: slideIn 0.3s ease-out;
+      max-width: 360px;
+    }
+
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error { border-left: 3px solid var(--red); }
+    .toast.info { border-left: 3px solid var(--accent); }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ── Responsive ──────────────── */
+    @media (max-width: 768px) {
+      .cards { grid-template-columns: 1fr; }
+      .header { flex-direction: column; gap: 16px; }
+      .quick-actions { flex-direction: column; align-items: stretch; }
+      .quick-actions .btn { justify-content: center; }
+    }
+
+    /* ── Copy Button ──────────────── */
+    .copy-feedback {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background: var(--green);
+      color: #000;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 1000;
+      animation: slideIn 0.3s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <div class="logo">🎵</div>
+        <div class="header-title">
+          <h1>PinPlay Launcher</h1>
+          <p>Manage Lavalink & Bot in one place</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="status stopped" id="overallStatus">
+          <span class="status-dot"></span>
+          <span>Offline</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <button class="btn btn-mega" id="btnStartAll" onclick="api('start-all')">
+        🚀 Start All
+      </button>
+      <button class="btn btn-mega-stop" id="btnStopAll" onclick="api('stop-all')">
+        ⏹ Stop All
+      </button>
+    </div>
+
+    <!-- Service Cards -->
+    <div class="cards">
+      <!-- Lavalink Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="card-icon lavalink">🔥</div>
+            <div>
+              <h3>Lavalink</h3>
+              <span>Audio Server • Port 2333</span>
+            </div>
+          </div>
+          <div class="status stopped" id="lavalinkStatus">
+            <span class="status-dot"></span>
+            <span>Stopped</span>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-success" onclick="api('start-lavalink')">▶ Start</button>
+          <button class="btn btn-danger" onclick="api('stop-lavalink')">■ Stop</button>
+        </div>
+      </div>
+
+      <!-- Bot Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <div class="card-icon bot">🤖</div>
+            <div>
+              <h3>PinPlay Bot</h3>
+              <span>Discord Bot • Node.js</span>
+            </div>
+          </div>
+          <div class="status stopped" id="botStatus">
+            <span class="status-dot"></span>
+            <span>Stopped</span>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-success" onclick="api('start-bot')">▶ Start</button>
+          <button class="btn btn-danger" onclick="api('stop-bot')">■ Stop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="log-panel">
+      <div class="log-tabs">
+        <button class="log-tab active" data-source="bot" onclick="switchTab('bot', this)">🤖 Bot Logs</button>
+        <button class="log-tab" data-source="lavalink" onclick="switchTab('lavalink', this)">🔥 Lavalink Logs</button>
+        <button class="log-tab" data-source="all" onclick="switchTab('all', this)">📋 All Logs</button>
+      </div>
+      <div class="log-toolbar">
+        <div class="log-toolbar-left">
+          <label>
+            <input type="checkbox" id="autoScroll" checked />
+            Auto-scroll
+          </label>
+          <label>
+            <input type="checkbox" id="showTimestamps" checked />
+            Timestamps
+          </label>
+        </div>
+        <div>
+          <button class="btn" onclick="copyLogs()" title="Copy all visible logs">📋 Copy Logs</button>
+          <button class="btn" onclick="clearLogs()">🗑 Clear</button>
+        </div>
+      </div>
+      <div class="log-container" id="logContainer"></div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toasts"></div>
+
+  <script>
+    let currentTab = "bot";
+    const allLogs = { bot: [], lavalink: [] };
+
+    // ── API Calls ──────────────────
+    async function api(endpoint) {
+      try {
+        const res = await fetch(`/api/${endpoint}`);
+        const data = await res.json();
+        showToast(data.msg, data.ok ? "success" : "error");
+      } catch (e) {
+        showToast("Connection error: " + e.message, "error");
+      }
+    }
+
+    // ── SSE ─────────────────────────
+    function connectSSE() {
+      const evtSource = new EventSource("/events");
+
+      evtSource.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data);
+        updateStatusBadge("lavalinkStatus", data.lavalink);
+        updateStatusBadge("botStatus", data.bot);
+        updateOverall(data);
+      });
+
+      evtSource.addEventListener("log", (e) => {
+        const entry = JSON.parse(e.data);
+        if (allLogs[entry.source]) {
+          allLogs[entry.source].push(entry);
+          if (allLogs[entry.source].length > 500) allLogs[entry.source].shift();
+        }
+        if (currentTab === "all" || currentTab === entry.source) {
+          appendLogLine(entry);
+        }
+      });
+
+      evtSource.addEventListener("toast", (e) => {
+        const data = JSON.parse(e.data);
+        showToast(data.msg, "info");
+      });
+
+      evtSource.onerror = () => {
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    // ── Status Updates ──────────────
+    function updateStatusBadge(id, status) {
+      const el = document.getElementById(id);
+      el.className = `status ${status}`;
+      const labels = { stopped: "Stopped", starting: "Starting", running: "Running", error: "Error" };
+      el.querySelector("span:last-child").textContent = labels[status] || status;
+    }
+
+    function updateOverall(data) {
+      const el = document.getElementById("overallStatus");
+      if (data.lavalink === "running" && data.bot === "running") {
+        el.className = "status running";
+        el.querySelector("span:last-child").textContent = "All Online";
+      } else if (data.lavalink === "starting" || data.bot === "starting") {
+        el.className = "status starting";
+        el.querySelector("span:last-child").textContent = "Starting...";
+      } else if (data.lavalink === "error" || data.bot === "error") {
+        el.className = "status error";
+        el.querySelector("span:last-child").textContent = "Error";
+      } else {
+        el.className = "status stopped";
+        el.querySelector("span:last-child").textContent = "Offline";
+      }
+    }
+
+    // ── Log Rendering ───────────────
+    function classifyLine(text) {
+      if (text.startsWith(">>>")) return "system";
+      const lower = text.toLowerCase();
+      if (lower.includes("[error") || lower.includes("error:") || lower.includes("❌")) return "error";
+      if (lower.includes("[warn") || lower.includes("⚠")) return "warn";
+      if (lower.includes("[info") || lower.includes("✅") || lower.includes("ready")) return "info";
+      return "";
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleTimeString("en-GB", { hour12: false });
+    }
+
+    function appendLogLine(entry) {
+      const container = document.getElementById("logContainer");
+      const showTs = document.getElementById("showTimestamps").checked;
+
+      // Split multiline log into separate lines
+      const lines = entry.text.split("\n").filter(l => l.trim());
+      for (const line of lines) {
+        const div = document.createElement("div");
+        div.className = `log-line ${classifyLine(line)}`;
+
+        let html = "";
+        if (showTs) html += `<span class="time">${formatTime(entry.time)}</span>`;
+        html += escapeHtml(line);
+        div.innerHTML = html;
+        container.appendChild(div);
+      }
+
+      // Auto-scroll
+      if (document.getElementById("autoScroll").checked) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ── Tab Switching ───────────────
+    function switchTab(source, el) {
+      currentTab = source;
+      document.querySelectorAll(".log-tab").forEach(t => t.classList.remove("active"));
+      el.classList.add("active");
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const container = document.getElementById("logContainer");
+      container.innerHTML = "";
+
+      let entries = [];
+      if (currentTab === "all") {
+        entries = [...allLogs.bot, ...allLogs.lavalink].sort((a, b) => a.time - b.time);
+      } else {
+        entries = allLogs[currentTab] || [];
+      }
+
+      for (const entry of entries) {
+        appendLogLine(entry);
+      }
+    }
+
+    // ── Actions ─────────────────────
+    function clearLogs() {
+      if (currentTab === "all") {
+        allLogs.bot = [];
+        allLogs.lavalink = [];
+      } else {
+        allLogs[currentTab] = [];
+      }
+      document.getElementById("logContainer").innerHTML = "";
+    }
+
+    function copyLogs() {
+      const container = document.getElementById("logContainer");
+      const text = container.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("📋 Logs copied to clipboard!", "success");
+      }).catch(() => {
+        // Fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        showToast("📋 Logs copied to clipboard!", "success");
+      });
+    }
+
+    // ── Toast ───────────────────────
+    function showToast(msg, type = "info") {
+      const container = document.getElementById("toasts");
+      const toast = document.createElement("div");
+      toast.className = `toast ${type}`;
+      toast.textContent = msg;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateX(100%)";
+        toast.style.transition = "all 0.3s ease";
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // ── Init ────────────────────────
+    connectSSE();
+  </script>
+</body>
+</html>

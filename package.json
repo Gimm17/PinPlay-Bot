@@ -1,0 +1,22 @@
+{
+  "name": "pinplay",
+  "version": "1.0.0",
+  "description": "PinPlay - Discord Music Bot (Lavalink v4 + Kazagumo)",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "launcher": "node launcher.js",
+    "deploy:global": "node scripts/deploy-commands.js --global",
+    "deploy:guild": "node scripts/deploy-commands.js --guild"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "kazagumo": "^3.4.3",
+    "shoukaku": "^4.3.0"
+  }
+}
