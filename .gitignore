@@ -6,3 +6,8 @@ data/
 *.exe
 .claude/
 *.log
+test-spotify.js
+scripts/test-spotify-fix.js
+inject_spdc.js
+README copy.md
+implementation_planv1.md
