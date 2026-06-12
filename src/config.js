@@ -30,6 +30,9 @@ const config = {
     clientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
     spDc: process.env.SPOTIFY_SP_DC || null
   },
+  nvidia: {
+    apiKey: process.env.NVIDIA_API_KEY || null
+  },
   logLevel: (process.env.LOG_LEVEL || "info").toLowerCase(),
   prefix: process.env.PREFIX || ".",
 };

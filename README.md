@@ -3,14 +3,14 @@
 
   # 🎵 PinPlay Discord Music Bot
 
-  Bot musik Discord modern dengan performa ultra-tinggi, antarmuka **Interactive Panel**, **25 Slash Commands**, dan ditenagai oleh **Lavalink v4** untuk streaming audio berkualitas tinggi tanpa lag.
+  Bot musik Discord modern dengan performa ultra-tinggi, antarmuka **Interactive Panel**, **27 Slash Commands**, dan ditenagai oleh **Lavalink v4** serta integrasi **NVIDIA AI API** untuk streaming audio berkualitas tinggi tanpa lag.
 
   [![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.js.org/)
   [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
   [![Lavalink](https://img.shields.io/badge/Lavalink-v4-E52B50?style=for-the-badge&logo=java&logoColor=white)](https://github.com/lavalink-devs/Lavalink)
   [![Status](https://img.shields.io/badge/Status-Production_Ready-success?style=for-the-badge)](https://github.com/Gimm17/PinPlay-Bot)
 
-  [✨ Fitur Utama](#-fitur-unggulan) • [⚡ Quick Start](#-quick-start) • [📖 Panduan Lengkap](GUIDE.md) • [📜 Daftar Command](#-daftar-command-25)
+  [✨ Fitur Utama](#-fitur-unggulan) • [⚡ Quick Start](#-quick-start) • [📜 Daftar Command](#-daftar-command-27)
 </div>
 
 ---
@@ -18,6 +18,8 @@
 ## ✨ Fitur Unggulan
 
 * 🎛️ **Interactive Music Panel** — Kontrol pemutaran musik langsung melalui tombol interaktif di chat (Play, Pause, Skip, Volume, dll) tanpa mengetik.
+* 🤖 **AI Playlist Generator** — Buat playlist lagu otomatis berdasarkan mood, tema, atau situasi (contoh: "lagu santai sore") lengkap dengan pilihan konfirmasi tombol.
+* 🔥 **AI Savage Roast** — Dapatkan roasting lucu nan tajam dari AI yang menganalisis lagu aktif dan user yang me-request lagu tersebut.
 * 🎧 **Multi-Platform Audio** — Streaming lagu favorit Anda dari YouTube, Spotify, Apple Music, SoundCloud, dan lainnya melalui plugin Lavalink v4.
 * 🔍 **Smart Search System** — Cari lagu dengan perintah `/search` dan pilih secara interaktif dari 5 hasil pencarian teratas.
 * 🎤 **Live Lyrics** — Dapatkan lirik lagu secara instan dan otomatis saat musik sedang diputar dengan `/lyrics`.
@@ -69,7 +71,7 @@ Music Panel menyediakan antarmuka visual berupa tombol-tombol yang intuitif untu
    ```bash
    cp .env.example .env
    ```
-   *Buka `.env` dan masukkan `DISCORD_TOKEN`, `CLIENT_ID` bot Anda dari Discord Developer Portal.*
+   *Buka `.env` dan masukkan `DISCORD_TOKEN`, `CLIENT_ID`, serta `NVIDIA_API_KEY` (untuk fitur AI) Anda.*
 
 4. **Daftarkan Slash Commands**
    ```bash
@@ -85,11 +87,15 @@ Music Panel menyediakan antarmuka visual berupa tombol-tombol yang intuitif untu
    npm start
    ```
 
-> 📖 **Butuh panduan yang lebih detail dari nol?** Silakan baca **[GUIDE.md](GUIDE.md)** dan **[GUIDE-SPOTIFY.md](GUIDE-SPOTIFY.md)**.
-
 ---
 
-## 📜 Daftar Command (25)
+## 📜 Daftar Command (27)
+
+### 🤖 Fitur AI (Opsional)
+| Command | Deskripsi |
+| :--- | :--- |
+| `/aiplaylist [query]` | Membuat playlist lagu otomatis menggunakan AI berdasarkan mood atau tema |
+| `/roast` | Me-roast secara savage lagu yang sedang diputar & pengguna yang me-request-nya |
 
 ### 🎵 Musik (Semua Pengguna)
 | Command | Deskripsi |

@@ -34,6 +34,9 @@ const NO_ARGS_ALIASES = {
 
   // leave
   l: { command: "leave", parse: "none" },
+
+  // roast (AI)
+  roast: { command: "roast", parse: "none" },
 };
 
 // === CATEGORY B: Single rest-of-string argument (3 commands) ===
@@ -42,6 +45,7 @@ const REST_STRING_ALIASES = {
   p: { command: "play", parse: "rest", option: "query" },
   sc: { command: "search", parse: "rest", option: "query" },
   ly: { command: "lyrics", parse: "rest", option: "query", required: false },
+  ap: { command: "aiplaylist", parse: "rest", option: "query", required: false },
 };
 
 // === CATEGORY C: Single integer argument (3 commands) ===
@@ -121,6 +125,8 @@ const FULL_COMMAND_ALIASES = {
   "247": { command: "247", parse: "bool", option: "enable" },
   djrole: { command: "djrole", parse: "subcommand:djrole" },
   access: { command: "access", parse: "subcommand:access" },
+  aiplaylist: { command: "aiplaylist", parse: "rest", option: "query", required: false },
+  roast: { command: "roast", parse: "none" },
 };
 
 // === GABUNG SEMUA ALIASES ===

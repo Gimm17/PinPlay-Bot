@@ -182,6 +182,20 @@ const PREFIX_COMMANDS = [
     desc: "Atur siapa yang boleh kontrol musik.",
     example: `${P}access mode restricted`,
   },
+  {
+    alias: `${P}ap`,
+    command: "aiplaylist",
+    usage: `${P}ap [tema]`,
+    desc: "AI bikin playlist otomatis dari tema/mood, approve buat masuk queue.",
+    example: `${P}ap lagu galau indo viral`,
+  },
+  {
+    alias: `${P}roast`,
+    command: "roast",
+    usage: `${P}roast`,
+    desc: "AI roast lagu yang lagi diputar + yang request-nya. Lucu-lucuan.",
+    example: `${P}roast`,
+  },
 ];
 
 function buildHelpV2Embed() {
@@ -198,6 +212,9 @@ function buildHelpV2Embed() {
   const setup = PREFIX_COMMANDS.filter((c) =>
     ["panel", "access", "djrole", "24/7 mode"].includes(c.command)
   );
+  const ai = PREFIX_COMMANDS.filter((c) =>
+    ["aiplaylist", "roast"].includes(c.command)
+  );
 
   const formatList = (list) =>
     list.map((c) => `**\`${c.alias}\`** → ${c.desc}`).join("\n");
@@ -213,7 +230,8 @@ function buildHelpV2Embed() {
     .addFields(
       { name: "🎵 Music", value: formatList(music), inline: false },
       { name: "🎛️ Control", value: formatList(control), inline: false },
-      { name: "⚙️ Setup", value: formatList(setup), inline: false }
+      { name: "⚙️ Setup", value: formatList(setup), inline: false },
+      { name: "🤖 AI", value: formatList(ai), inline: false }
     )
     .setFooter({ text: "💡 Tips: Semua prefix command punya permission yang sama dengan slash command." });
 

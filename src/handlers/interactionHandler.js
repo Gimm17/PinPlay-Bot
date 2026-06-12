@@ -49,6 +49,13 @@ function attachInteractionHandler(client) {
           return;
         }
 
+        // AI Playlist buttons (aiplaylist:approve/cancel)
+        if (id.startsWith("aiplaylist:")) {
+          const { handleAIPlaylistButton } = require("../commands/aiplaylist");
+          await handleAIPlaylistButton(interaction, client);
+          return;
+        }
+
         // Panel buttons (pinplay:)
         const handled = await handlePanelButton(interaction, client);
         if (handled) return;

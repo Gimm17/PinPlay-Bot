@@ -187,6 +187,29 @@ const COMMANDS = [
     detail: "Loncat langsung ke posisi tertentu di queue, skip semua lagu sebelumnya.",
     examples: ["/skipto position:4"],
   },
+  {
+    name: "aiplaylist",
+    usage: "/aiplaylist query:<tema>",
+    detail:
+      "Buat playlist otomatis pake AI. Kasih tema/mood, AI bakal cariin 10-15 lagu yang cocok.\n" +
+      "Contoh tema: 'galau indo viral', 'nongkrong santai', 'workout energik'.\n" +
+      "Hasilnya muncul dengan tombol Konfirmasi — klik buat masukin semua lagu ke queue.\n" +
+      "Wajib join voice channel. Butuh NVIDIA_API_KEY di .env.",
+    examples: [
+      "/aiplaylist query: lagu galau indo viral",
+      ".ap lagu galau indo viral",
+      ".ap (lalu ketik temanya)",
+    ],
+  },
+  {
+    name: "roast",
+    usage: "/roast",
+    detail:
+      "AI roast lagu yang lagi diputar + orang yang request-nya. Buat lucu-lucuan.\n" +
+      "Kalau gaada lagu, AI bakal roast kamu instead. Bahasa Indonesia gaul.\n" +
+      "Butuh NVIDIA_API_KEY di .env.",
+    examples: ["/roast", ".roast"],
+  },
 ];
 
 // ===== Helpers (untuk /help all + pagination) =====
@@ -239,11 +262,13 @@ function buildAllHelpSummaryEmbed() {
     "leave",
   ];
   const setup = ["panel", "access", "djrole", "247"];
+  const ai = ["aiplaylist", "roast"];
 
   embed.addFields(
     { name: "🎵 Music", value: music.map((c) => `\`/${c}\``).join("  ") },
     { name: "🎛️ Control", value: control.map((c) => `\`/${c}\``).join("  ") },
-    { name: "⚙️ Setup", value: setup.map((c) => `\`/${c}\``).join("  ") }
+    { name: "⚙️ Setup", value: setup.map((c) => `\`/${c}\``).join("  ") },
+    { name: "🤖 AI", value: ai.map((c) => `\`/${c}\``).join("  ") }
   );
 
   return embed;

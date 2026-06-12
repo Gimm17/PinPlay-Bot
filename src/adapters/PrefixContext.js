@@ -87,15 +87,20 @@ class PrefixContext {
     // Strip flags
     const { flags, ...rest } = payload;
 
-    if (this._deferredMessage) {
-      // Edit the deferred message
-      const edited = await this._deferredMessage.edit(rest).catch(() => null);
+    // Saat edit pesan placeholder "Searching..." dengan embeds/components
+    // tapi tanpa content, Discord TIDAK menghapus teks lama. Paksa content
+    // kosong biar placeholder kehapus (kecuali command memang set content).
+    if (rest.content === undefined && (rest.embeds || rest.components)) {
+      rest.content = "";
+    }
 
-      // Update state: after editReply, we're no longer deferred
+    if (this._deferredMessage) {
+      // Edit the deferred message. JANGAN null-kan reference-nya —
+      // command bisa panggil editReply berkali-kali (progress → hasil),
+      // dan semuanya harus edit pesan yang SAMA (seperti interaction asli).
+      const edited = await this._deferredMessage.edit(rest).catch(() => null);
       this._deferred = false;
       this._replied = true;
-      this._deferredMessage = null;
-
       return edited;
     }
 
@@ -117,6 +122,19 @@ class PrefixContext {
     // Strip flags
     const { flags, ...rest } = payload;
     return this._message.channel.send(rest).catch(() => null);
+  }
+
+  /**
+   * deleteReply() - Hapus pesan placeholder/deferred
+   * Dipakai command yang kirim hasil di chat baru (followUp)
+   * lalu mau hapus status "Roast..." biar ga numpuk.
+   */
+  async deleteReply() {
+    if (this._deferredMessage) {
+      await this._deferredMessage.delete().catch(() => null);
+      this._deferredMessage = null;
+    }
+    return null;
   }
 
   /**

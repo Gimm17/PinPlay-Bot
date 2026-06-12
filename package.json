@@ -17,6 +17,7 @@
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "kazagumo": "^3.4.3",
+    "openai": "^4.78.0",
     "shoukaku": "^4.3.0"
   }
 }

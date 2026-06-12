@@ -817,3 +817,292 @@ User harus enable **Message Content Intent** (privileged):
 4. Restart bot
 
 Tanpa intent ini, prefix commands **tidak akan berfungsi**.
+
+---
+
+## [6.0.0] - AI Features + Bug Fixes - 2026-06-13
+
+### Context
+
+Sesi ini menambahkan 2 fitur AI menggunakan NVIDIA Build API (model `meta/llama-3.3-70b-instruct`):
+1. **AI Playlist Generator** (`/aiplaylist` / `.ap`) — AI bikin playlist berdasarkan mood/tema
+2. **Roast** (`/roast` / `.roast`) — AI roast lagu yang diputar + orang yang request
+
+Plus beberapa bug fix penting untuk prefix commands dan Lavalink.
+
+---
+
+### Created - `src/utils/ai.js`
+
+**Fungsi:** Singleton wrapper untuk NVIDIA Build API (OpenAI-compatible).
+
+**Exports:**
+- `callAI({ messages, temperature?, maxTokens? })` → `Promise<string>` — panggil AI, return teks respons
+- `isAIAvailable()` → `boolean` — cek API key tersedia
+
+**Detail:**
+- Lazy-init `OpenAI` client (tidak crash jika API key belum di-set)
+- Base URL: `https://integrate.api.nvidia.com/v1`
+- Model: `meta/llama-3.3-70b-instruct`
+- Timeout: 90 detik
+- Error handling: network/auth/rate-limit/timeout → pesan user-friendly Bahasa Indonesia
+
+**Catatan Model:**
+Awalnya menggunakan `qwen/qwen3-next-80b-a3b-instruct` tapi model tersebut mengalami timeout permanen (>110 detik) di sisi NVIDIA API. Diganti ke `meta/llama-3.3-70b-instruct` yang stabil dan cepat (~2-10 detik respons).
+
+---
+
+### Created - `src/commands/aiplaylist.js`
+
+**Fungsi:** AI Playlist Generator — bikin playlist otomatis berdasarkan mood/tema.
+
+**Command:** `/aiplaylist query:<tema?>` atau `.ap <tema>` atau `.ap` (tanpa query, bot nanya dulu)
+
+**Flow:**
+```
+User: .ap lagu galau indo viral
+  → deferReply("AI sedang mikir...")
+  → callAI() dengan system prompt "music curator"
+  → AI returns JSON [{title, artist}, ...]
+  → _extractJSON() parse respons (handles ```json```, raw array)
+  → _resolveTracks(): search tiap lagu via kazagumo.search()
+  → Tampilkan embed + tombol ✅ Tambah Semua / ❌ Batal
+  → Cache di client._aiPlaylistCache (120s TTL)
+  → User klik ✅ → handleAIPlaylistButton()
+  → Add tracks ke queue → play → update panel
+```
+
+**Fitur:**
+- `.ap` tanpa query → bot nanya "Pengen playlist apa gezz?" → tunggu jawaban 60s via message collector
+- Search lagu secara paralel (5 concurrent) biar cepat
+- Embed tunjukin ✅ found / ❌ not found per lagu
+- Tombol konfirmasi dengan cache + auto-expiry
+- `handleAIPlaylistButton()` dipanggil dari interactionHandler untuk tombol approve/cancel
+
+**AI System Prompt:**
+Menginstruksikan AI untuk return JSON array murni `[{title, artist}, ...]`, campur Indonesia & internasional, variasi artis.
+
+---
+
+### Created - `src/commands/roast.js`
+
+**Fungsi:** AI roast lagu yang lagi diputar + orang yang request.
+
+**Command:** `/roast` atau `.roast`
+
+**Flow:**
+```
+User: .roast
+  → deferReply() → placeholder "Searching..."
+  → editReply("Roast...") → update placeholder
+  → Paralel: fetchLyrics() + callAI()
+  → AI roast dalam 1 paragraf, Bahasa Indonesia gaul
+  → followUp(roast) → chat baru (ga tenggelam)
+  → deleteReply() → hapus status "Roast..."
+```
+
+**Fitur:**
+- Kalau gaada lagu → roast user instead
+- Lyrics fetch + AI call jalan **paralel** biar cepat (bukan sequential)
+- Roast 1 paragraf pendek, santai, sebut judul lagu + nama requester
+- Emoji 😹 di akhir roast
+- Hasil roast muncul di chat baru, status "Roast..." dihapus otomatis
+- Ping `<@requester>` biar kena notif
+
+---
+
+### Modified - `package.json`
+
+**Perubahan:** Tambah dependency `openai: "^4.78.0"`
+
+---
+
+### Modified - `src/config.js`
+
+**Perubahan:**
+```javascript
+nvidia: {
+  apiKey: process.env.NVIDIA_API_KEY || null,
+},
+```
+
+---
+
+### Modified - `.env.example`
+
+**Perubahan:** Tambah section AI:
+```
+NVIDIA_API_KEY=nvapi-xxx
+```
+
+---
+
+### Modified - `src/utils/colors.js`
+
+**Perubahan:** Tambah 2 warna:
+```javascript
+ROAST: 0xFF4500,  // Orange-Red — AI roast
+AI:    0x9B59B6,  // Purple — AI playlist
+```
+
+---
+
+### Modified - `src/config/prefixAliases.js`
+
+**Perubahan:** Tambah 3 alias baru:
+- `ap` → `aiplaylist` (rest string, optional)
+- `aiplaylist` → `aiplaylist` (rest string, optional)
+- `roast` → `roast` (no args)
+
+---
+
+### Modified - `src/handlers/interactionHandler.js`
+
+**Perubahan:** Tambah routing untuk tombol AI Playlist:
+```javascript
+if (id.startsWith("aiplaylist:")) {
+  const { handleAIPlaylistButton } = require("../commands/aiplaylist");
+  await handleAIPlaylistButton(interaction, client);
+  return;
+}
+```
+
+---
+
+### Modified - `src/commands/help.js`
+
+**Perubahan:**
+- Tambah 2 entri ke `COMMANDS` array: `aiplaylist` dan `roast`
+- Tambah kategori "🤖 AI" di summary embed
+
+---
+
+### Modified - `src/commands/helpv2.js`
+
+**Perubahan:**
+- Tambah 2 entri ke `PREFIX_COMMANDS` array: `.ap` dan `.roast`
+- Tambah kategori "🤖 AI" di summary embed
+
+---
+
+### Modified - `src/adapters/PrefixContext.js` — Bug Fixes
+
+#### Fix 1: "Searching..." tidak hilang setelah editReply
+
+**Masalah:** `editReply({ embeds: [...] })` tanpa `content` field tidak menghapus teks placeholder. Discord tetap menampilkan teks lama + embed baru di pesan yang sama.
+
+**Fix:**
+```javascript
+// Saat payload punya embeds/components tapi tanpa content,
+// paksa content: "" biar placeholder kehapus
+if (rest.content === undefined && (rest.embeds || rest.components)) {
+  rest.content = "";
+}
+```
+
+**Dampak:** Semua prefix command yang pakai embeds (`.p`, `.q`, `.np`, dll) langsung kena perbaikannya.
+
+#### Fix 2: "⏳ Memuat dari Spotify..." nempel permanen + pesan dobel
+
+**Masalah:** Setelah `editReply` pertama, `_deferredMessage` di-null-kan. `editReply` kedua jatuh ke fallback `message.reply()` → bikin pesan baru, bukan edit pesan yang sama.
+
+**Fix:**
+```javascript
+// Sebelum:
+this._deferredMessage = null;  // ❌ Reference hilang
+
+// Sesudah:
+// JANGAN null-kan — command bisa editReply berkali-kali
+// (progress → hasil), semua harus edit pesan yang SAMA
+```
+
+**Dampak:** Command multi-step (Spotify playlist progress, dll) sekarang edit 1 pesan yang sama, persis seperti interaction asli.
+
+#### Fix 3: Tambah `deleteReply()`
+
+**Perubahan:** Tambah method `deleteReply()` ke PrefixContext.
+```javascript
+async deleteReply() {
+  if (this._deferredMessage) {
+    await this._deferredMessage.delete().catch(() => null);
+    this._deferredMessage = null;
+  }
+}
+```
+
+**Alasan:** Command roast butuh hapus status placeholder setelah hasil dikirim di chat baru.
+
+---
+
+### Modified - `PinPlay-Lavalink/application.yml` — YouTube Fix
+
+**Masalah:** Error `Must find sig function from script` saat play lagu YouTube. YouTube ganti player script dan plugin `youtube-plugin-1.18.1` gagal extract signature.
+
+**Fix:** Atur urutan client YouTube, prioritaskan client yang tidak butuh cipher/sig extraction:
+```yaml
+plugins:
+  youtube:
+    enabled: true
+    clients:
+      - MUSIC
+      - IOS
+      - ANDROID_VR
+      - WEB
+```
+
+**Catatan:** Nama client HARUS valid sesuai plugin (`MUSIC`, `IOS`, `ANDROID_VR`, `WEB`, `MWEB`, `WEBEMBEDDED`, `ANDROID`, `ANDROID_MUSIC`, `TV`, `TVHTML5_SIMPLY`). Nama salah → config gagal parse → search kosong.
+
+---
+
+### Files Summary
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/utils/ai.js` | Created | NVIDIA AI client wrapper |
+| `src/commands/aiplaylist.js` | Created | AI Playlist Generator command + button handler |
+| `src/commands/roast.js` | Created | AI Roast command |
+| `src/adapters/PrefixContext.js` | Modified | 3 bug fixes (content clearing, reference retention, deleteReply) |
+| `src/config/prefixAliases.js` | Modified | Tambah .ap, .aiplaylist, .roast aliases |
+| `src/handlers/interactionHandler.js` | Modified | Tambah aiplaylist button routing |
+| `src/commands/help.js` | Modified | Tambah aiplaylist + roast entries |
+| `src/commands/helpv2.js` | Modified | Tambah .ap + .roast entries |
+| `src/config.js` | Modified | Tambah nvidia.apiKey |
+| `src/utils/colors.js` | Modified | Tambah ROAST + AI colors |
+| `package.json` | Modified | Tambah openai dependency |
+| `.env.example` | Modified | Tambah NVIDIA_API_KEY |
+| `PinPlay-Lavalink/application.yml` | Modified | YouTube client order fix |
+
+---
+
+### Total Commands Sekarang: 28
+
+| # | Slash | Prefix | Category |
+|---|-------|--------|----------|
+| 1 | `/play` | `.p` | Music |
+| 2 | `/search` | `.sc` | Music |
+| 3 | `/nowplaying` | `.np` | Music |
+| 4 | `/queue` | `.q` | Music |
+| 5 | `/lyrics` | `.ly` | Music |
+| 6 | `/history` | `.hist` | Music |
+| 7 | `/skip` | `.s` | Control |
+| 8 | `/stop` | `.st` | Control |
+| 9 | `/pause` | `.pause` | Control |
+| 10 | `/resume` | `.re` | Control |
+| 11 | `/loop` | `.lp` | Control |
+| 12 | `/shuffle` | `.sh` | Control |
+| 13 | `/seek` | `.sk` | Control |
+| 14 | `/volume` | `.v` | Control |
+| 15 | `/filter` | `.f` | Control |
+| 16 | `/remove` | `.rm` | Control |
+| 17 | `/move` | `.mv` | Control |
+| 18 | `/clear` | `.cl` | Control |
+| 19 | `/leave` | `.l` | Control |
+| 20 | `/skipto` | `.stt` | Control |
+| 21 | `/panel` | `.panel` | Setup |
+| 22 | `/access` | `.access` | Setup |
+| 23 | `/djrole` | `.dj` | Setup |
+| 24 | `/247` | `.247` | Setup |
+| 25 | `/help` | `.h` | Help |
+| 26 | `/helpv2` | `.hv2` | Help |
+| 27 | `/aiplaylist` | `.ap` | **AI** |
+| 28 | `/roast` | `.roast` | **AI** |

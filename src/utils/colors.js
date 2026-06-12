@@ -12,6 +12,8 @@ const Colors = {
   SUCCESS:  0x57F287,  // Green  — action succeeded
   WARNING:  0xFEE75C,  // Yellow — warning messages
   IDLE:     0x95A5A6,  // Gray   — no music playing / idle state
+  ROAST:    0xFF4500,  // Orange-Red — AI roast feature
+  AI:       0x9B59B6,  // Purple — AI playlist feature
 };
 
 module.exports = { Colors };
