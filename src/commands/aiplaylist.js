@@ -10,6 +10,7 @@ const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { getPlayer } = require("../utils/player");
 const { Colors } = require("../utils/colors");
 const { callAI, isAIAvailable } = require("../utils/ai");
+const { errorEmbed, infoEmbed } = require("../utils/embeds");
 const { makeLogger } = require("../utils/logger");
 
 const log = makeLogger(config.logLevel);
@@ -243,7 +244,7 @@ module.exports = {
 
     if (!isAIAvailable()) {
       return interaction.reply({
-        content: "❌ Fitur AI belum diaktifkan. Admin perlu set `NVIDIA_API_KEY` di `.env`.",
+        embeds: [errorEmbed("❌ Fitur AI belum diaktifkan. Admin perlu set `NVIDIA_API_KEY` di `.env`.")],
         flags: 64,
       });
     }
@@ -252,7 +253,7 @@ module.exports = {
     const vc = interaction.member?.voice?.channel;
     if (!vc) {
       return interaction.reply({
-        content: "❌ Kamu harus **join voice channel** dulu buat bikin playlist.",
+        embeds: [errorEmbed("❌ Kamu harus **join voice channel** dulu buat bikin playlist.")],
         flags: 64,
       });
     }
@@ -277,8 +278,7 @@ module.exports = {
     // Slash command: minta user ulang dengan query (gak bisa collector dengan mudah)
     if (!isPrefix) {
       return interaction.reply({
-        content:
-          "🎧 Mau playlist apa gezz? Jalankan lagi dengan tema, contoh:\n`/aiplaylist query: lagu galau indo viral`",
+        embeds: [infoEmbed("🎧 Mau playlist apa gezz? Jalankan lagi dengan tema, contoh:\n`/aiplaylist query: lagu galau indo viral`")],
         flags: 64,
       });
     }
@@ -349,14 +349,14 @@ async function handleAIPlaylistButton(interaction, client) {
 
   if (!cache) {
     return interaction
-      .reply({ content: "❌ Playlist udah kadaluarsa. Coba `/aiplaylist` lagi ya.", flags: 64 })
+      .reply({ embeds: [errorEmbed("❌ Playlist udah kadaluarsa. Coba `/aiplaylist` lagi ya.")], flags: 64 })
       .catch(() => null);
   }
 
   // Verifikasi user
   if (interaction.user.id !== cache.userId) {
     return interaction
-      .reply({ content: "❌ Ini bukan playlist kamu!", flags: 64 })
+      .reply({ embeds: [errorEmbed("❌ Ini bukan playlist kamu!")], flags: 64 })
       .catch(() => null);
   }
 
@@ -378,7 +378,7 @@ async function handleAIPlaylistButton(interaction, client) {
     const tracks = cache.resolved.filter((r) => r.track).map((r) => r.track);
     if (tracks.length === 0) {
       return interaction
-        .followUp({ content: "❌ Gak ada lagu yang bisa ditambah.", flags: 64 })
+        .followUp({ embeds: [errorEmbed("❌ Gak ada lagu yang bisa ditambah.")], flags: 64 })
         .catch(() => null);
     }
 
@@ -401,7 +401,7 @@ async function handleAIPlaylistButton(interaction, client) {
         log.error("AI playlist create player error:", err?.message || err);
         return interaction
           .followUp({
-            content: "❌ Gagal join voice channel. Pastikan kamu masih di VC.",
+            embeds: [errorEmbed("❌ Gagal join voice channel. Pastikan kamu masih di VC.")],
             flags: 64,
           })
           .catch(() => null);

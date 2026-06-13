@@ -5,6 +5,7 @@ const { requireVoiceForPlay } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
 const { Colors } = require("../utils/colors");
 const { validateQuery } = require("../utils/validation");
+const { errorEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -23,14 +24,14 @@ module.exports = {
 
     const { valid, sanitized: query, error } = validateQuery(rawQuery);
     if (!valid) {
-      return interaction.reply({ content: `❌ ${error}`, flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed(`❌ ${error}`)], flags: 64 });
     }
 
     const settings = getGuildSettings(interaction.guildId);
 
     if (settings.requestChannelId && interaction.channelId !== settings.requestChannelId) {
       return interaction.reply({
-        content: `❌ Command music hanya boleh dipakai di <#${settings.requestChannelId}>`,
+        embeds: [errorEmbed(`❌ Command music hanya boleh dipakai di <#${settings.requestChannelId}>`)],
         flags: 64,
       });
     }
@@ -38,7 +39,7 @@ module.exports = {
     const vc = interaction.member?.voice?.channel;
     if (!vc) {
       return interaction.reply({
-        content: "❌ Kamu harus **join voice channel** dulu.",
+        embeds: [errorEmbed("❌ Kamu harus **join voice channel** dulu.")],
         flags: 64,
       });
     }

@@ -3,6 +3,7 @@ const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
 const { validateIntRange } = require("../utils/validation");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -23,7 +24,7 @@ module.exports = {
     
     const { valid, error } = validateIntRange(value, 0, 100, "Volume");
     if (!valid) {
-      return interaction.reply({ content: `❌ ${error}`, flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed(`❌ ${error}`)], flags: 64 });
     }
 
     const vol = value;
@@ -31,6 +32,6 @@ module.exports = {
     await player.setVolume(vol);
     setGuildSettings(interaction.guildId, { volume: vol });
 
-    return interaction.reply({ content: `🔊 Volume set to **${vol}%**`, flags: 64 });
+    return interaction.reply({ embeds: [successEmbed(`🔊 Volume diset ke **${vol}%**`)], flags: 64 });
   }
 };

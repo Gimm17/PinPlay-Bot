@@ -535,4 +535,62 @@ async function searchYouTubeForSpotify(kazagumo, spotifyResult, requester) {
     : { type: "SEARCH", tracks: resolvedTracks };
 }
 
-module.exports = { resolveSpotifyUrl, searchYouTubeForSpotify, scrapePlaylistTracks, resolvePlaylistViaTrackUrls, resolveRemainingTracks };
+/**
+ * Background: Resolve sisa track via YouTube search saja (tidak pakai Spotify URL).
+ * Dipakai oleh play-yt command supaya tidak kena Spotify rate limit.
+ * Track info berupa { name, artist, url } dari scrapePlaylistTracks().
+ */
+async function resolveRemainingTracksYouTube(client, guildId, remainingTracks, requester) {
+  const BATCH_SIZE = 3;
+  const DELAY_BETWEEN_BATCHES = 600;
+  let addedCount = 0;
+
+  for (let i = 0; i < remainingTracks.length; i += BATCH_SIZE) {
+    const player = client.kazagumo.players.get(guildId);
+    if (!player) {
+      log.info("[BG YT Load] Player sudah tidak ada, stop loading.");
+      break;
+    }
+
+    const batch = remainingTracks.slice(i, i + BATCH_SIZE);
+
+    for (const trackInfo of batch) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const searchQ = `${trackInfo.name} ${trackInfo.artist}`.trim();
+          const res = await client.kazagumo.search(searchQ, { requester });
+          const track = res?.tracks?.[0] || null;
+          if (track) {
+            const p = client.kazagumo.players.get(guildId);
+            if (!p) {
+              log.info("[BG YT Load] Player gone, stopping.");
+              break;
+            }
+            p.queue.add(track);
+            addedCount++;
+            break; // success, no retry needed
+          }
+        } catch {
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+      }
+    }
+
+    // Update panel setelah setiap batch
+    try {
+      const { updatePanel } = require("../music/panel");
+      await updatePanel(client, guildId);
+    } catch { /* ignore */ }
+
+    // Delay antar batch
+    if (i + BATCH_SIZE < remainingTracks.length) {
+      await new Promise((r) => setTimeout(r, DELAY_BETWEEN_BATCHES));
+    }
+  }
+
+  log.info(`[BG YT Load] Selesai: ${addedCount}/${remainingTracks.length} tracks loaded (YouTube) di guild ${guildId}`);
+}
+
+module.exports = { resolveSpotifyUrl, searchYouTubeForSpotify, scrapePlaylistTracks, resolvePlaylistViaTrackUrls, resolveRemainingTracks, resolveRemainingTracksYouTube };

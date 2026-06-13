@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 const FILTERS = {
   off: null,
@@ -47,15 +48,15 @@ module.exports = {
 
     if (name === "off") {
       await player.shoukaku.clearFilters();
-      return interaction.reply({ content: "Filters cleared ✅", flags: 64 });
+      return interaction.reply({ embeds: [successEmbed("✅ **Filter dimatikan** — audio kembali normal.")], flags: 64 });
     }
 
     const data = FILTERS[name];
     if (!data) {
-      return interaction.reply({ content: "❌ Filter tidak dikenal.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Filter tidak dikenal.")], flags: 64 });
     }
 
     await player.shoukaku.setFilters(data);
-    return interaction.reply({ content: `✅ Filter applied: **${name}**`, flags: 64 });
+    return interaction.reply({ embeds: [successEmbed(`✅ **Filter aktif:** ${name}`)], flags: 64 });
   },
 };

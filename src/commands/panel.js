@@ -3,6 +3,7 @@ const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { buildPanelEmbed, buildPanelComponents, updatePanel } = require("../music/panel");
 const { getPlayer } = require("../utils/player");
 const { isAdmin } = require("../utils/permissions");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,7 +23,7 @@ module.exports = {
 
   async execute(interaction, clientArg) {
     if (!isAdmin(interaction)) {
-      return interaction.reply({ content: "❌ Command ini khusus untuk Administrator atau Owner bot.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Command ini khusus untuk Administrator atau Owner bot.")], flags: 64 });
     }
 
     const client = clientArg || interaction.client;
@@ -32,12 +33,12 @@ module.exports = {
 
     if (action === "remove") {
       setGuildSettings(guildId, { panelChannelId: null, panelMessageId: null });
-      return interaction.reply({ content: "✅ Panel settings dihapus.", flags: 64 });
+      return interaction.reply({ embeds: [successEmbed("✅ Panel settings dihapus.")], flags: 64 });
     }
 
     if (action === "show") {
       await updatePanel(client, guildId);
-      return interaction.reply({ content: "✅ Panel di-update (kalau sudah dibuat).", flags: 64 });
+      return interaction.reply({ embeds: [successEmbed("✅ Panel di-update (kalau sudah dibuat).")], flags: 64 });
     }
 
     // create
@@ -49,6 +50,6 @@ module.exports = {
 
     setGuildSettings(guildId, { panelChannelId: interaction.channelId, panelMessageId: msg.id });
 
-    return interaction.reply({ content: "✅ Panel dibuat di channel ini.", flags: 64 });
+    return interaction.reply({ embeds: [successEmbed("✅ Panel dibuat di channel ini.")], flags: 64 });
   },
 };

@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
+const { successEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,6 +18,6 @@ module.exports = {
 
     player.queue.clear();
     await player.skip();
-    return interaction.reply({ content: "Stopped ⏹️ (Queue cleared)", flags: 64 });
+    return interaction.reply({ embeds: [successEmbed("⏹️ **Stopped** — musik dihentikan & queue dibersihkan.")], flags: 64 });
   }
 };

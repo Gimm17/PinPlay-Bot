@@ -20,6 +20,20 @@ const COMMANDS = [
     ],
   },
   {
+    name: "play-yt",
+    usage: "/play-yt query:<judul/link>",
+    detail:
+      "Sama seperti /play, tapi SEMUA lagu di-resolve via YouTube saja.\n" +
+      "Cocok kalau Spotify lagi rate limit (429). Link Spotify playlist/track/album tetap bisa dipakai — " +
+      "bot akan ambil metadata-nya lalu cari audio di YouTube.\n" +
+      "Wajib join voice channel.",
+    examples: [
+      "/play-yt query: blinding lights",
+      "/play-yt query: https://open.spotify.com/playlist/...",
+      ".p-yt https://open.spotify.com/track/...",
+    ],
+  },
+  {
     name: "nowplaying",
     usage: "/nowplaying",
     detail: "Lihat lagu yang sedang diputar.",
@@ -244,7 +258,7 @@ function buildAllHelpSummaryEmbed() {
         "- Command kontrol lain mengikuti setting `/access`.\n"
     );
 
-  const music = ["play", "search", "nowplaying", "queue", "lyrics", "history"];
+  const music = ["play", "play-yt", "search", "nowplaying", "queue", "lyrics", "history"];
   const control = [
     "loop",
     "pause",

@@ -3,6 +3,7 @@ const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { config } = require("../config");
 const { getPlayer } = require("../utils/player");
 const { isAdmin } = require("../utils/permissions");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 /**
  * 24/7 mode:
@@ -25,7 +26,7 @@ module.exports = {
 
   async execute(interaction, clientArg) {
     if (!isAdmin(interaction)) {
-      return interaction.reply({ content: "❌ Command ini khusus untuk Administrator atau Owner bot.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Command ini khusus untuk Administrator atau Owner bot.")], flags: 64 });
     }
 
     const client = clientArg || interaction.client;
@@ -35,7 +36,7 @@ module.exports = {
     if (!enable) {
       setGuildSettings(interaction.guildId, { stay247: false });
       return interaction.reply({
-        content: "✅ Mode 24/7 **OFF**. Bot bisa keluar saat idle (kalau queue kosong).",
+        embeds: [successEmbed("✅ Mode 24/7 **OFF** — bot bisa keluar saat idle (queue kosong).")],
         flags: 64,
       });
     }
@@ -44,7 +45,7 @@ module.exports = {
     const voice = interaction.member?.voice?.channel;
     if (!voice) {
       return interaction.reply({
-        content: "❌ Join voice channel dulu, lalu jalankan `/247 enable:true`.",
+        embeds: [errorEmbed("❌ Join voice channel dulu, lalu jalankan `/247 enable:true`.")],
         flags: 64,
       });
     }
@@ -72,8 +73,8 @@ module.exports = {
       textChannelId: interaction.channelId,
     });
 
-    return interaction.editReply(
-      "✅ Mode 24/7 **ON**. Bot akan stay di voice channel ini."
-    );
+    return interaction.editReply({
+      embeds: [successEmbed("✅ Mode 24/7 **ON** — bot bakal stay di voice channel ini.")],
+    });
   },
 };

@@ -17,11 +17,13 @@ const { formatMs, progressBar, thumb } = require("../utils/format");
 function buildPanelEmbed(player, client) {
   const current = getCurrentTrack(player);
 
-  const embed = new EmbedBuilder().setTitle("🎶 Music Panel");
+  const embed = new EmbedBuilder();
 
   if (!player || !current) {
-    embed.setDescription("Tidak ada lagu yang sedang diputar.")
-         .setColor(Colors.IDLE);
+    embed
+      .setAuthor({ name: "PinPlay • Music" })
+      .setDescription("💤 *Lagi nganggur — gaada lagu yang diputar.*\nKetik `/play` atau klik **Add Song** buat mulai.")
+      .setColor(Colors.IDLE);
     return embed;
   }
 
@@ -31,42 +33,39 @@ function buildPanelEmbed(player, client) {
 
   embed.setColor(isPaused ? Colors.PAUSED : Colors.PLAYING);
 
-  embed.setDescription(
-    `**[${current.title}](${current.uri || "https://discord.com"})**\n` +
-    (current.author ? `by *${current.author}*\n\n` : "\n") +
-    `\`${progressBar(pos, dur)}\`  **${formatMs(pos)} / ${formatMs(dur)}**`
+  // Status pill ala mockup: "NOW PLAYING" / "PAUSED"
+  const statusLabel = isPaused ? "⏸ PAUSED" : "▶ NOW PLAYING";
+  embed.setAuthor({ name: statusLabel });
+
+  // Judul + artist sebagai title (bukan thumbnail besar)
+  embed
+    .setTitle(current.title?.slice(0, 250) || "Unknown")
+    .setURL(current.uri || null);
+
+  const upNext = getUpcomingTracks(player);
+  const queueCount = upNext.length;
+
+  // Body: artist + progress bar compact + meta dalam satu baris
+  const lines = [];
+  if (current.author) lines.push(`**${current.author}**`);
+  lines.push(`\`${progressBar(pos, dur)}\` ${formatMs(pos)} / ${formatMs(dur)}`);
+
+  const loopIcon = player.loop === "track" ? "🔂" : player.loop === "queue" ? "🔁" : "➡️";
+  const reqName = current.requester?.displayName || current.requester?.username || "—";
+  lines.push(
+    `🔊 ${player.volume ?? "?"}%  •  ${loopIcon} ${player.loop || "off"}  •  👤 ${reqName}`
   );
 
-  embed.addFields(
-    {
-      name: "👤 Req by",
-      value: current.requester ? `${current.requester}` : "—",
-      inline: true,
-    },
-    {
-      name: "🔊 Vol",
-      value: `${player.volume ?? "?"}%`,
-      inline: true,
-    },
-    {
-      name: "🔁 Loop",
-      value: `${player.loop || "none"}`,
-      inline: true,
-    }
-  );
+  embed.setDescription(lines.join("\n"));
 
+  // Thumbnail kecil (default Discord ~80px) — tetap dipakai tapi kecil & di kanan
   const t = thumb(current);
   if (t) embed.setThumbnail(t);
-  
-  const upNext = getUpcomingTracks(player);
-  let queueText = upNext.length > 0 ? `${upNext.length} tracks` : "Empty";
-  
-  const s = getGuildSettings(player.guildId);
-  if (s.stay247) {
-    queueText += " • 24/7 Mode ON";
-  }
 
-  embed.setFooter({ text: `Queue: ${queueText}` });
+  const s = getGuildSettings(player.guildId);
+  const footerParts = [`📜 Queue: ${queueCount > 0 ? `${queueCount} lagu` : "kosong"}`];
+  if (s.stay247) footerParts.push("24/7 ON");
+  embed.setFooter({ text: footerParts.join("  •  ") });
 
   return embed;
 }

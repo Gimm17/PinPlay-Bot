@@ -6,6 +6,7 @@ const { Colors } = require("../utils/colors");
 const { resolveSpotifyUrl, searchYouTubeForSpotify, scrapePlaylistTracks, resolvePlaylistViaTrackUrls, resolveRemainingTracks } = require("../utils/spotify");
 const { validateQuery } = require("../utils/validation");
 const { makeLogger } = require("../utils/logger");
+const { errorEmbed } = require("../utils/embeds");
 
 const log = makeLogger(config.logLevel);
 
@@ -30,7 +31,7 @@ module.exports = {
     
     const { valid, sanitized: query, error } = validateQuery(rawQuery);
     if (!valid) {
-      return interaction.reply({ content: `❌ ${error}`, flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed(`❌ ${error}`)], flags: 64 });
     }
 
     const settings = getGuildSettings(interaction.guildId);
@@ -38,7 +39,7 @@ module.exports = {
     // optional: batasi command hanya di channel tertentu
     if (settings.requestChannelId && interaction.channelId !== settings.requestChannelId) {
       return interaction.reply({
-        content: `❌ Command music hanya boleh dipakai di <#${settings.requestChannelId}>`,
+        embeds: [errorEmbed(`❌ Command music hanya boleh dipakai di <#${settings.requestChannelId}>`)],
         flags: 64,
       });
     }
@@ -47,7 +48,7 @@ module.exports = {
     const vc = interaction.member?.voice?.channel;
     if (!vc) {
       return interaction.reply({
-        content: "❌ Kamu harus **join voice channel** dulu.",
+        embeds: [errorEmbed("❌ Kamu harus **join voice channel** dulu.")],
         flags: 64,
       });
     }

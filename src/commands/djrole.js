@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { setGuildSettings, getGuildSettings } = require("../utils/storage");
 const { isAdmin } = require("../utils/permissions");
+const { successEmbed, infoEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,12 +25,12 @@ module.exports = {
 
     if (sub === "view") {
       const s = getGuildSettings(interaction.guildId);
-      if (!s.djRoleId) return interaction.reply({ content: "DJ role not set. Default: users with **Manage Server**.", flags: 64 });
-      return interaction.reply({ content: `DJ role: <@&${s.djRoleId}>`, flags: 64 });
+      if (!s.djRoleId) return interaction.reply({ embeds: [infoEmbed("ℹ️ DJ role belum di-set. Default: user dengan **Manage Server**.")], flags: 64 });
+      return interaction.reply({ embeds: [infoEmbed(`🎧 DJ role saat ini: <@&${s.djRoleId}>`)], flags: 64 });
     }
 
     const role = interaction.options.getRole("role", true);
     setGuildSettings(interaction.guildId, { djRoleId: role.id });
-    return interaction.reply({ content: `DJ role set to ${role} ✅`, flags: 64 });
+    return interaction.reply({ embeds: [successEmbed(`✅ DJ role diset ke ${role}`)], flags: 64 });
   }
 };

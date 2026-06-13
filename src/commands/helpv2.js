@@ -15,6 +15,13 @@ const PREFIX_COMMANDS = [
     example: `${P}p never gonna give you up`,
   },
   {
+    alias: `${P}p-yt`,
+    command: "play-yt",
+    usage: `${P}p-yt <judul/link>`,
+    desc: "Putar lagu via YouTube saja — aman dari Spotify rate limit. Link Spotify juga bisa.",
+    example: `${P}p-yt https://open.spotify.com/playlist/...`,
+  },
+  {
     alias: `${P}s`,
     command: "skip",
     usage: `${P}s`,
@@ -200,7 +207,7 @@ const PREFIX_COMMANDS = [
 
 function buildHelpV2Embed() {
   const music = PREFIX_COMMANDS.filter((c) =>
-    ["play", "search", "nowplaying", "queue", "lyrics", "history"].includes(c.command)
+    ["play", "play-yt", "search", "nowplaying", "queue", "lyrics", "history"].includes(c.command)
   );
   const control = PREFIX_COMMANDS.filter((c) =>
     [

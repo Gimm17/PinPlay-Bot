@@ -3,6 +3,7 @@ const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer, getCurrentTrack } = require("../utils/player");
 const { validateIntRange } = require("../utils/validation");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,19 +22,19 @@ module.exports = {
 
     const current = getCurrentTrack(player);
     if (!current || !current.length) {
-      return interaction.reply({ content: "❌ Track ini tidak bisa di-seek.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Track ini tidak bisa di-seek.")], flags: 64 });
     }
 
     const sec = interaction.options.getInteger("seconds", true);
-    
+
     const { valid, error } = validateIntRange(sec, 0, Math.floor(current.length / 1000), "Detik");
     if (!valid) {
-      return interaction.reply({ content: `❌ ${error}`, flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed(`❌ ${error}`)], flags: 64 });
     }
 
     const pos = sec * 1000;
 
     await player.seek(pos);
-    return interaction.reply({ content: `⏩ Seek ke **${sec}s**`, flags: 64 });
+    return interaction.reply({ embeds: [successEmbed(`⏩ **Seek** ke posisi **${sec}s**`)], flags: 64 });
   }
 };

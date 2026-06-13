@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
+const { successEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,6 +22,6 @@ module.exports = {
     player.queue.clear();
     await player.destroy();
 
-    return interaction.reply({ content: "👋 Keluar dari voice.", flags: 64 });
+    return interaction.reply({ embeds: [successEmbed("👋 **Keluar dari voice** — sampai jumpa!")], flags: 64 });
   }
 };

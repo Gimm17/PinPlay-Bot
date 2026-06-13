@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require("discord.js");
 const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { isAdmin } = require("../utils/permissions");
+const { Colors } = require("../utils/colors");
+const { successEmbed, errorEmbed, infoEmbed } = require("../utils/embeds");
 
 function uniq(arr) {
   return Array.from(new Set(arr));
@@ -79,7 +81,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!isAdmin(interaction)) {
-      return interaction.reply({ content: "❌ Command ini khusus untuk Administrator atau Owner bot.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Command ini khusus untuk Administrator atau Owner bot.")], flags: 64 });
     }
 
     const guildId = interaction.guildId;
@@ -89,7 +91,7 @@ module.exports = {
     if (sub === "mode") {
       const mode = interaction.options.getString("mode", true);
       setGuildSettings(guildId, { controlMode: mode });
-      return interaction.reply({ content: `✅ controlMode set to **${mode}**`, flags: 64 });
+      return interaction.reply({ embeds: [successEmbed(`✅ Mode kontrol diset ke **${mode}**`)], flags: 64 });
     }
 
     if (sub === "allowuser") {
@@ -99,11 +101,11 @@ module.exports = {
 
       if (action === "list") {
         const pretty = list.length ? list.map((id) => `<@${id}>`).join("\n") : "Kosong.";
-        return interaction.reply({ content: `👤 Allowed Users:\n${pretty}`, flags: 64 });
+        return interaction.reply({ embeds: [infoEmbed(`👤 **Allowed Users:**\n${pretty}`)], flags: 64 });
       }
 
       if (!user) {
-        return interaction.reply({ content: "❌ Pilih user dulu.", flags: 64 });
+        return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
       }
 
       const next =
@@ -113,10 +115,7 @@ module.exports = {
 
       setGuildSettings(guildId, { allowedUserIds: next });
       return interaction.reply({
-        content:
-          action === "add"
-            ? `✅ Ditambahkan: ${user}`
-            : `✅ Dihapus: ${user}`,
+        embeds: [successEmbed(action === "add" ? `✅ Ditambahkan: ${user}` : `✅ Dihapus: ${user}`)],
         flags: 64,
       });
     }
@@ -128,11 +127,11 @@ module.exports = {
 
       if (action === "list") {
         const pretty = list.length ? list.map((id) => `<@&${id}>`).join("\n") : "Kosong.";
-        return interaction.reply({ content: `🎭 Allowed Roles:\n${pretty}`, flags: 64 });
+        return interaction.reply({ embeds: [infoEmbed(`🎭 **Allowed Roles:**\n${pretty}`)], flags: 64 });
       }
 
       if (!role) {
-        return interaction.reply({ content: "❌ Pilih role dulu.", flags: 64 });
+        return interaction.reply({ embeds: [errorEmbed("❌ Pilih role dulu.")], flags: 64 });
       }
 
       const next =
@@ -142,10 +141,7 @@ module.exports = {
 
       setGuildSettings(guildId, { allowedRoleIds: next });
       return interaction.reply({
-        content:
-          action === "add"
-            ? `✅ Ditambahkan: ${role}`
-            : `✅ Dihapus: ${role}`,
+        embeds: [successEmbed(action === "add" ? `✅ Ditambahkan: ${role}` : `✅ Dihapus: ${role}`)],
         flags: 64,
       });
     }
@@ -154,16 +150,17 @@ module.exports = {
       const channel = interaction.options.getChannel("channel");
       setGuildSettings(guildId, { requestChannelId: channel?.id || null });
       return interaction.reply({
-        content: channel
+        embeds: [successEmbed(channel
           ? `✅ Request channel diset ke ${channel}`
-          : "✅ Request channel dimatikan (bebas di mana saja).",
+          : "✅ Request channel dimatikan (bebas di mana saja).")],
         flags: 64,
       });
     }
 
     // view
     const embed = new EmbedBuilder()
-      .setTitle("⚙️ Access Settings")
+      .setColor(Colors.INFO)
+      .setAuthor({ name: "⚙️ Access Settings" })
       .addFields(
         { name: "controlMode", value: `\`${settings.controlMode || "all"}\``, inline: true },
         { name: "DJ Role", value: settings.djRoleId ? `<@&${settings.djRoleId}>` : "—", inline: true },

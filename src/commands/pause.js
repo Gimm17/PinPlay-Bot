@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
+const { successEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,6 +17,6 @@ module.exports = {
     if (!ok) return;
 
     player.pause(true);
-    return interaction.reply({ content: "Paused ⏸️", flags: 64 });
+    return interaction.reply({ embeds: [successEmbed("⏸️ **Paused** — musik dijeda. Pakai `/resume` buat lanjut.")], flags: 64 });
   }
 };

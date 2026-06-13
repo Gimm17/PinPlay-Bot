@@ -1106,3 +1106,167 @@ plugins:
 | 26 | `/helpv2` | `.hv2` | Help |
 | 27 | `/aiplaylist` | `.ap` | **AI** |
 | 28 | `/roast` | `.roast` | **AI** |
+
+---
+
+## [7.0.0] - YouTube-Only Play + UI Redesign - 2026-06-13
+
+### Context
+
+Sesi ini fokus ke 2 hal:
+1. **Command `.p-yt` baru** — play lewat YouTube only (bypass Spotify API) buat ngakalin rate limit 429.
+2. **Redesign tampilan semua message** — semua jadi embed dengan side box berwarna biar UI serasi & enak dilihat, plus palet warna baru.
+
+---
+
+### Masalah: Spotify Rate Limit (429 Too Many Requests)
+
+Play playlist/track Spotify lewat `.p` kadang gagal dengan error `❌ Gagal memuat track pertama dari playlist.` karena Spotify API mengembalikan **429 (rate limit)**. Akar masalah: LavaSrc resolve tiap track Spotify lewat Spotify API, kalau kebanyakan request → diblokir.
+
+**Solusi:** Bikin command alternatif `.p-yt` yang resolve semua lagu lewat **YouTube search** (pakai metadata judul+artis dari scraping embed page, bukan Spotify API). `.p` tetap dipertahankan untuk play langsung dari Spotify saat tidak rate limit.
+
+---
+
+### Created - `src/commands/play-yt.js`
+
+**Fungsi:** Play lagu/playlist via YouTube only — aman dari Spotify rate limit.
+
+**Command:** `/play-yt query:<judul/link>` atau `.p-yt <judul/link>`
+
+**Flow per tipe URL:**
+- **Spotify Playlist** → `scrapePlaylistTracks()` ambil daftar lagu dari embed page → resolve tiap lagu via YouTube search (`judul artis`) → play first, load rest di background via `resolveRemainingTracksYouTube()`
+- **Spotify Album** → `_scrapeAlbumTracks()` scrape embed page → resolve batch via YouTube
+- **Spotify Track** → `_scrapeTrackInfo()` ambil judul+artis dari embed page → search YouTube
+- **Judul/URL YouTube** → langsung search YouTube (sama seperti `.p`)
+
+**Helper internal:**
+- `_scrapeTrackInfo(trackId)` — ambil `{name, artist}` dari `/embed/track/{id}` tanpa Spotify API
+- `_scrapeAlbumTracks(albumId)` — ambil track list dari `/embed/album/{id}` tanpa Spotify API
+- `_resolveBatchYouTube(kazagumo, items, requester)` — resolve batch lagu paralel (5 concurrent, 2 retry)
+
+**Kenapa bypass Spotify API:** scraping embed page tidak butuh token & tidak kena rate limit. Audio tetap dari YouTube (sama seperti hasil akhir `.p`).
+
+---
+
+### Created - `src/utils/spotify.js` → `resolveRemainingTracksYouTube()`
+
+**Fungsi:** Background loader untuk sisa track playlist via YouTube search (bukan Spotify URL).
+
+**Detail:**
+- `BATCH_SIZE = 3`, delay 600ms antar batch
+- Search pakai query `judul artis` (Kazagumo auto-prepend `ytsearch:`)
+- Retry 1x kalau gagal, cek player exists sebelum add
+- Update panel tiap batch
+
+---
+
+### Bug Fix - Double `ytsearch:` Prefix
+
+**Masalah:** Query jadi `ytsearch:ytsearch:Judul Lagu` → search gagal. Kazagumo otomatis prepend `ytsearch:` untuk non-URL query, jadi prefix manual bikin dobel.
+
+**Fix:** Hapus semua prefix `ytsearch:` manual, pass plain text `judul artis` saja. Diterapkan di `play-yt.js` dan `resolveRemainingTracksYouTube()`.
+
+---
+
+### Bug Fix - Spotify Track via `.p-yt` Masih Kena 429
+
+**Masalah:** `.p-yt` untuk track Spotify masih panggil `resolveSpotifyUrl()` (hit Spotify API) → 429, lalu fallback search URL Spotify → kena 429 lagi.
+
+**Fix:** Scrape embed page (`/embed/track/{id}`) untuk dapat judul+artis tanpa API, baru search YouTube. Spotify API hanya dipakai sebagai fallback terakhir kalau scrape gagal. Album juga sama (scrape embed dulu).
+
+---
+
+### Modified - Prefix Aliases & Help
+
+- `src/config/prefixAliases.js` — tambah alias `p-yt` → `play-yt` (rest string)
+- `src/commands/help.js` — tambah entri `play-yt` + masuk kategori Music
+- `src/commands/helpv2.js` — tambah `.p-yt` + masuk kategori Music
+- Deploy: total command jadi **29**
+
+---
+
+### Redesign UI - Semua Message Jadi Embed Berwarna
+
+**Konteks:** Banyak message bot masih plain text (`content: "..."`) dan pesan "Now Playing" memunculkan preview thumbnail YouTube yang gede sampai makan layar chat. User minta semua message konsisten pakai embed dengan side box berwarna biar enak dilihat.
+
+---
+
+### Modified - `src/utils/colors.js` — Palet Warna Baru
+
+**Perubahan:** Ganti dari warna Discord default ke palet soft custom:
+- **Primary:** `#A5D6F1` (soft blue) — QUEUED, INFO, SUCCESS, PANEL, AI
+- **Secondary:** `#EFAAB9` (soft pink) — PLAYING (NOW PLAYING), WARNING, ROAST
+- PAUSED → `#B8C4CE` (abu-biru), ERROR → `#E06B7A` (rose red), IDLE → `#B8C4CE`
+
+**Sesuai permintaan user:** NOW PLAYING = **pink**, QUEUED = **biru**.
+
+---
+
+### Created - `src/utils/embeds.js` — Helper Embed
+
+**Fungsi:** Helper biar semua command konsisten pakai embed dengan cepat.
+
+**Exports:**
+- `simpleEmbed(message, color)` — embed dasar 1 baris
+- `successEmbed(message)` — pakai `Colors.SUCCESS`
+- `infoEmbed(message)` — pakai `Colors.INFO`
+- `errorEmbed(message)` — pakai `Colors.ERROR`
+- `warningEmbed(message)` — pakai `Colors.WARNING`
+
+---
+
+### Modified - `src/music/events.js` — "Now Playing" Jadi Embed
+
+**Masalah:** Pesan started-playing kirim link YouTube mentah → Discord bikin preview thumbnail gede + format text biasa.
+
+**Fix:** Ganti `buildStartedPlayingText()` jadi `buildStartedPlayingEmbed()` — embed pink (`Colors.PLAYING`) dengan header `▶ NOW PLAYING`, judul clickable, baris meta (artist • requester • durasi), thumbnail kecil di kanan. Serasi dengan style "Queued ✅".
+
+---
+
+### Modified - `src/music/panel.js` & `src/commands/nowplaying.js`
+
+**Perubahan:** Redesign layout panel & nowplaying mengikuti mockup:
+- Status pill `▶ NOW PLAYING` / `⏸ PAUSED` di author area
+- Judul lagu jadi title clickable (bukan thumbnail besar)
+- Meta digabung 1 baris compact: `🔊 60% • ➡️ off • 👤 User`
+- Thumbnail kecil (default ~80px), footer queue count + 24/7 indicator
+- Warna ikut palet baru (pink playing / abu-biru paused)
+
+---
+
+### Modified - Semua Command Lain Jadi Embed
+
+Semua message yang tadinya plain text diubah jadi embed via helper `embeds.js`:
+
+| Command | Reply diubah |
+|---------|--------------|
+| skip, pause, stop, resume, shuffle, leave | success embed |
+| loop, volume, filter, seek | success/error embed |
+| 247, panel, djrole, access | success/error/info embed |
+| play, play-yt, search, lyrics | error embed (guard) + status embed |
+| queue | redesign author pill + palet baru |
+| aiplaylist | error/info embed |
+
+**Hasil:** Semua message konsisten — **pink** = playing, **biru** = queue/info/sukses, **rose red** = error, **abu-biru** = paused/idle.
+
+---
+
+### Files Summary
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/commands/play-yt.js` | Created | Command play via YouTube only (anti rate limit) |
+| `src/utils/embeds.js` | Created | Helper embed (success/info/error/warning) |
+| `src/utils/spotify.js` | Modified | Tambah `resolveRemainingTracksYouTube()` |
+| `src/utils/colors.js` | Modified | Palet baru: primary #A5D6F1, secondary #EFAAB9 |
+| `src/music/events.js` | Modified | "Now Playing" jadi embed pink |
+| `src/music/panel.js` | Modified | Redesign layout panel compact |
+| `src/config/prefixAliases.js` | Modified | Tambah alias `.p-yt` |
+| `src/commands/help.js`, `helpv2.js` | Modified | Tambah entri play-yt |
+| `src/commands/*.js` (21 file) | Modified | Semua reply jadi embed berwarna |
+
+---
+
+### Total Commands Sekarang: 29
+
+Tambahan dari 28 sebelumnya: `/play-yt` (`.p-yt`) — Music category.

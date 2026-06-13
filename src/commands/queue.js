@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getPlayer, getCurrentTrack, getUpcomingTracks } = require("../utils/player");
 const { formatMs } = require("../utils/format");
+const { Colors } = require("../utils/colors");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -38,11 +39,11 @@ module.exports = {
     const slice = upcoming.slice(start, start + perPage);
 
     const embed = new EmbedBuilder()
-      .setTitle("📜 Queue")
+      .setColor(Colors.INFO)
+      .setAuthor({ name: "📜 Queue" })
       .setDescription(
-        `**Now Playing:** **${current ? current.title : "(buffering...)"}**\n` +
-        `**Up Next:** ${total} track\n` +
-        `**Page:** ${safePage}/${maxPage}`
+        `▶ **${current ? current.title : "(buffering...)"}**\n` +
+        `*${total} lagu di antrian • Page ${safePage}/${maxPage}*`
       );
 
     if (slice.length === 0) {
@@ -51,8 +52,8 @@ module.exports = {
       const list = slice
         .map((t, i) => {
           const idx = start + i + 1;
-          const dur = t.length ? ` • \`${formatMs(t.length)}\`` : "";
-          return `\`${idx}.\` **${t.title}**${dur}`;
+          const dur = t.length ? ` \`${formatMs(t.length)}\`` : "";
+          return `\`${String(idx).padStart(2, " ")}\` ${t.title}${dur}`;
         })
         .join("\n");
 

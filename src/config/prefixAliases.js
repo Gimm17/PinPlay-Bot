@@ -46,6 +46,7 @@ const REST_STRING_ALIASES = {
   sc: { command: "search", parse: "rest", option: "query" },
   ly: { command: "lyrics", parse: "rest", option: "query", required: false },
   ap: { command: "aiplaylist", parse: "rest", option: "query", required: false },
+  "p-yt": { command: "play-yt", parse: "rest", option: "query" },
 };
 
 // === CATEGORY C: Single integer argument (3 commands) ===
@@ -126,6 +127,7 @@ const FULL_COMMAND_ALIASES = {
   djrole: { command: "djrole", parse: "subcommand:djrole" },
   access: { command: "access", parse: "subcommand:access" },
   aiplaylist: { command: "aiplaylist", parse: "rest", option: "query", required: false },
+  "play-yt": { command: "play-yt", parse: "rest", option: "query" },
   roast: { command: "roast", parse: "none" },
 };
 

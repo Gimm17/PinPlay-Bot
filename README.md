@@ -3,23 +3,25 @@
 
   # 🎵 PinPlay Discord Music Bot
 
-  Bot musik Discord modern dengan performa ultra-tinggi, antarmuka **Interactive Panel**, **27 Slash Commands**, dan ditenagai oleh **Lavalink v4** serta integrasi **NVIDIA AI API** untuk streaming audio berkualitas tinggi tanpa lag.
+  Bot musik Discord modern dengan performa ultra-tinggi, antarmuka **Interactive Panel**, **29 Slash Commands**, dan ditenagai oleh **Lavalink v4** serta integrasi **NVIDIA AI API** dengan balutan **Premium Pastel UI** untuk streaming audio berkualitas tinggi tanpa lag.
 
   [![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.js.org/)
   [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
   [![Lavalink](https://img.shields.io/badge/Lavalink-v4-E52B50?style=for-the-badge&logo=java&logoColor=white)](https://github.com/lavalink-devs/Lavalink)
   [![Status](https://img.shields.io/badge/Status-Production_Ready-success?style=for-the-badge)](https://github.com/Gimm17/PinPlay-Bot)
 
-  [✨ Fitur Utama](#-fitur-unggulan) • [⚡ Quick Start](#-quick-start) • [📜 Daftar Command](#-daftar-command-27)
+  [✨ Fitur Utama](#-fitur-unggulan) • [🎨 Preview UI](#-preview-uiux-baru) • [⚡ Quick Start](#-quick-start) • [📜 Daftar Command](#-daftar-command-29)
 </div>
 
 ---
 
 ## ✨ Fitur Unggulan
 
+* 🎨 **Premium Pastel UI/UX** — Tampilan chat estetik dengan skema warna HSL soft pastel (Primary Blue `#A5D6F1` & Secondary Pink `#EFAAB9`). Semua respons pesan bot dikemas rapi dalam embed tanpa link tautan besar yang mengganggu.
 * 🎛️ **Interactive Music Panel** — Kontrol pemutaran musik langsung melalui tombol interaktif di chat (Play, Pause, Skip, Volume, dll) tanpa mengetik.
 * 🤖 **AI Playlist Generator** — Buat playlist lagu otomatis berdasarkan mood, tema, atau situasi (contoh: "lagu santai sore") lengkap dengan pilihan konfirmasi tombol.
 * 🔥 **AI Savage Roast** — Dapatkan roasting lucu nan tajam dari AI yang menganalisis lagu aktif dan user yang me-request lagu tersebut.
+* 🚀 **YouTube-Only Bypass (`/play-yt`)** — Putar lagu/playlist Spotify bebas hambatan dari *429 Rate Limit* menggunakan command khusus yang mem-bypass Spotify API langsung ke pencarian YouTube.
 * 🎧 **Multi-Platform Audio** — Streaming lagu favorit Anda dari YouTube, Spotify, Apple Music, SoundCloud, dan lainnya melalui plugin Lavalink v4.
 * 🔍 **Smart Search System** — Cari lagu dengan perintah `/search` dan pilih secara interaktif dari 5 hasil pencarian teratas.
 * 🎤 **Live Lyrics** — Dapatkan lirik lagu secara instan dan otomatis saat musik sedang diputar dengan `/lyrics`.
@@ -31,19 +33,14 @@
 
 ---
 
-## 🎛️ Interactive Music Panel Preview
+## 🎨 Preview UI/UX Baru
 
-Music Panel menyediakan antarmuka visual berupa tombol-tombol yang intuitif untuk mengontrol musik secara langsung dari obrolan Discord:
+Berikut adalah tampilan baru dari Interactive Music Panel dan respon embed premium PinPlay:
 
-```
-+------------------------------------------------------+
-|             🎵 NOW PLAYING: Song Title               |
-|  [===---------------------------------------] 03:45   |
-+------------------------------------------------------+
-|  [⏮️ Prev]  [⏸️ Pause]  [⏹️ Stop]  [⏭️ Skip]  [🔄 Loop]   |
-|  [🔊 Vol+]  [🔈 Mute]   [🔊 Vol-]  [🔀 Shuf]  [📜 Queue]  |
-+------------------------------------------------------+
-```
+<div align="center">
+  <img src="DRAF-DESIGN/DRAFT-DESIGN1.png" alt="Interactive Music Panel Preview" width="380" style="margin-right: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);" />
+  <img src="DRAF-DESIGN/Screenshot-queued-dan-song.png" alt="Now Playing & Queued Preview" width="380" style="border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);" />
+</div>
 
 ---
 
@@ -89,7 +86,7 @@ Music Panel menyediakan antarmuka visual berupa tombol-tombol yang intuitif untu
 
 ---
 
-## 📜 Daftar Command (27)
+## 📜 Daftar Command (29)
 
 ### 🤖 Fitur AI (Opsional)
 | Command | Deskripsi |
@@ -101,12 +98,14 @@ Music Panel menyediakan antarmuka visual berupa tombol-tombol yang intuitif untu
 | Command | Deskripsi |
 | :--- | :--- |
 | `/play <query>` | Memutar lagu/playlist berdasarkan judul, URL YouTube, Spotify, dll. |
+| `/play-yt <query>` | Memutar lagu/playlist Spotify/YouTube via pencarian YouTube langsung (Bypass 429 Rate Limit). |
 | `/search <query>` | Mencari lagu dan menampilkan 5 hasil pilihan interaktif. |
 | `/nowplaying` | Menampilkan informasi detail tentang lagu yang sedang diputar. |
 | `/lyrics [query]` | Menampilkan lirik lagu secara otomatis atau mencari manual. |
 | `/queue [page]` | Menampilkan daftar antrian lagu saat ini. |
 | `/history` | Menampilkan riwayat 15 lagu terakhir yang diputar. |
-| `/help` | Menampilkan panduan bantuan bot. |
+| `/help` | Menampilkan panduan bantuan bot umum. |
+| `/helpv2 [mode]` | Menampilkan panduan khusus untuk perintah berbasis awalan (Prefix Commands). |
 
 ### 🎛️ Kontrol Pemutaran (Dapat Dibatasi)
 | Command | Deskripsi |

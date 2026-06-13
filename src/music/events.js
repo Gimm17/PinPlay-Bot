@@ -1,8 +1,11 @@
+const { EmbedBuilder } = require("discord.js");
 const { config } = require("../config");
 const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { makeLogger } = require("../utils/logger");
 const { updatePanel } = require("./panel");
 const { recordTrack } = require("../commands/history");
+const { Colors } = require("../utils/colors");
+const { formatMs, thumb } = require("../utils/format");
 
 function attachMusicEvents(client) {
   const kazagumo = client.kazagumo;
@@ -77,15 +80,29 @@ function attachMusicEvents(client) {
     return null;
   }
 
-  function buildStartedPlayingText(track) {
-    const title = escapeMarkdown(track?.title || "Unknown title");
-    const authorRaw = track?.author || "";
-    const author = authorRaw ? ` by **${escapeMarkdown(authorRaw)}**` : "";
+  function buildStartedPlayingEmbed(track) {
+    const title = (track?.title || "Unknown title").slice(0, 250);
+    const author = track?.author || "";
     const url = normalizeUrl(track);
+    const dur = track?.length ? `  •  ${formatMs(track.length)}` : "";
+    const reqName =
+      track?.requester?.displayName || track?.requester?.username || null;
 
-    // Slim, judul clickable, tanpa requested by
-    if (url) return `🎶 Started playing **[${title}](${url})**${author}`;
-    return `Started playing ${title}${author}`;
+    const embed = new EmbedBuilder()
+      .setColor(Colors.PLAYING)
+      .setAuthor({ name: "▶ NOW PLAYING" })
+      .setTitle(title)
+      .setURL(url || null)
+      .setDescription(
+        (author ? `**${author}**` : "") +
+        (reqName ? `${author ? "  •  " : ""}👤 ${reqName}` : "") +
+        dur
+      );
+
+    const t = thumb(track);
+    if (t) embed.setThumbnail(t);
+
+    return embed;
   }
 
   kazagumo.on("playerStart", async (player, track) => {
@@ -101,8 +118,8 @@ function attachMusicEvents(client) {
       log.warn("updatePanel failed (playerStart):", e?.message || e);
     }
 
-    // Kirim started playing ke channel command (yang sama seperti versi awal kamu)
-    const text = buildStartedPlayingText(track);
+    // Kirim "Now Playing" sebagai embed (serasi dengan style Queued)
+    const embed = buildStartedPlayingEmbed(track);
 
     const ch = await client.channels.fetch(player.textId).catch(() => null);
     if (!ch) {
@@ -112,9 +129,10 @@ function attachMusicEvents(client) {
       return;
     }
 
-    ch.send({ content: text, allowedMentions: { parse: [] } }).catch((e) =>
-      log.warn("Started playing send failed:", e?.message || e)
-    );
+    ch.send({
+      embeds: [embed],
+      allowedMentions: { parse: [] },
+    }).catch((e) => log.warn("Started playing send failed:", e?.message || e));
   });
 
   kazagumo.on("playerEnd", async (player) => {

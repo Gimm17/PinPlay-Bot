@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer, getCurrentTrack } = require("../utils/player");
+const { successEmbed, errorEmbed } = require("../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,7 +33,7 @@ module.exports = {
     const current = getCurrentTrack(player);
     const hasSomething = !!current || (Array.isArray(player?.queue) ? player.queue.length > 0 : false);
     if (!hasSomething) {
-      return interaction.reply({ content: "❌ Tidak ada lagu/queue aktif.", flags: 64 });
+      return interaction.reply({ embeds: [errorEmbed("❌ Tidak ada lagu/queue aktif.")], flags: 64 });
     }
 
     const mode = interaction.options.getString("mode", true);
@@ -40,11 +41,11 @@ module.exports = {
 
     const text =
       mode === "none"
-        ? "🔁 Loop **OFF**"
+        ? "➡️ Loop **OFF**"
         : mode === "track"
-        ? "🔂 Loop **TRACK**"
-        : "🔁 Loop **QUEUE**";
+        ? "🔂 Loop **TRACK** — lagu sekarang diulang terus."
+        : "🔁 Loop **QUEUE** — antrian diulang dari awal.";
 
-    return interaction.reply({ content: text, flags: 64 });
+    return interaction.reply({ embeds: [successEmbed(text)], flags: 64 });
   },
 };

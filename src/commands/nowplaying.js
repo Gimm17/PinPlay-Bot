@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getPlayer, getCurrentTrack } = require("../utils/player");
 const { formatMs, progressBar, thumb } = require("../utils/format");
+const { Colors } = require("../utils/colors");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,30 +19,20 @@ module.exports = {
 
     const pos = player.position || 0;
     const dur = current.length || 0;
+    const isPaused = player.paused;
+
+    const loopIcon = player.loop === "track" ? "🔂" : player.loop === "queue" ? "🔁" : "➡️";
+    const reqName = current.requester?.displayName || current.requester?.username || "—";
 
     const embed = new EmbedBuilder()
-      .setTitle("🎶 Sedang Diputar")
-      .setDescription(`**${current.title}**\n${current.uri ? `[Open Link](${current.uri})` : ""}`)
-      .addFields(
-        {
-          name: "⏱ Durasi",
-          value: `\`${progressBar(pos, dur)}\`  **${formatMs(pos)} / ${formatMs(dur)}**`,
-        },
-        {
-          name: "👤 Diminta oleh",
-          value: current.requester ? `${current.requester}` : "—",
-          inline: true,
-        },
-        {
-          name: "🔊 Volume",
-          value: `${player.volume ?? "?"}%`,
-          inline: true,
-        },
-        {
-          name: "🔁 Loop",
-          value: `${player.loop || "none"}`,
-          inline: true,
-        }
+      .setColor(isPaused ? Colors.PAUSED : Colors.PLAYING)
+      .setAuthor({ name: isPaused ? "⏸ PAUSED" : "▶ NOW PLAYING" })
+      .setTitle(current.title?.slice(0, 250) || "Unknown")
+      .setURL(current.uri || null)
+      .setDescription(
+        (current.author ? `**${current.author}**\n` : "") +
+        `\`${progressBar(pos, dur)}\` ${formatMs(pos)} / ${formatMs(dur)}\n` +
+        `🔊 ${player.volume ?? "?"}%  •  ${loopIcon} ${player.loop || "off"}  •  👤 ${reqName}`
       );
 
     const t = thumb(current);
@@ -50,3 +41,4 @@ module.exports = {
     return interaction.reply({ embeds: [embed] });
   },
 };
+

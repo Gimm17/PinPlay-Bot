@@ -24,7 +24,7 @@ module.exports = {
       const current = getCurrentTrack(player);
       if (!current) {
         return interaction.reply({
-          content: "❌ Tidak ada lagu yang sedang diputar. Gunakan `/lyrics query:<judul>`.",
+          embeds: [new EmbedBuilder().setColor(Colors.ERROR).setDescription("❌ Tidak ada lagu yang sedang diputar. Gunakan `/lyrics query:<judul>`.")],
           flags: 64,
         });
       }
