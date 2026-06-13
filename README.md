@@ -41,10 +41,7 @@ Berikut adalah perbandingan tampilan notifikasi pemutaran lagu sebelum dan sesud
 | :---: | :---: |
 | <img src="DRAF-DESIGN/before.png" alt="Sebelum Redesign" width="360" style="border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);" /> | <img src="DRAF-DESIGN/after.png" alt="Sesudah Redesign" width="360" style="border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);" /> |
 
-Selain itu, bot juga dilengkapi dengan **Interactive Music Panel** yang memudahkan Anda mengontrol lagu langsung lewat tombol chat:
-<div align="center">
-  <img src="DRAF-DESIGN/DRAFT-DESIGN1.png" alt="Interactive Music Panel" width="450" style="border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-top: 15px;" />
-</div>
+
 
 ---
 
