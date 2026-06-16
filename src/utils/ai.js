@@ -45,18 +45,24 @@ const PROVIDERS = {
 };
 
 /**
- * MODELS — model name -> { provider, label, description }.
+ * MODELS — model key (used in /ai-set model <key>) -> { provider, apiName, label, description }.
+ * The KEY is what users see and use in commands. The APINAME is what we actually
+ * send to the provider's API (e.g. nvidia needs full "meta/llama-3.3-70b-instruct",
+ * not the short key). Without this, the fallback would send the short key to a
+ * different provider and get 404.
  * Used by /ai-set model <choice> to auto-resolve the provider.
  * Adding a new model = add an entry here (provider must exist in PROVIDERS).
  */
 const MODELS = {
   "llama-3.3-70b": {
     provider: "nvidia",
+    apiName: "meta/llama-3.3-70b-instruct",
     label: "Llama 3.3 70B",
     description: "NVIDIA Build • meta/llama-3.3-70b-instruct • General-purpose, Bahasa Indonesia OK",
   },
   "MiniMax-M3": {
     provider: "tokenrouter",
+    apiName: "MiniMax-M3",
     label: "M3 (TokenRouter)",
     description: "TokenRouter • MiniMax-M3 • Ringan & cepat",
   },
@@ -96,6 +102,24 @@ function getModelsForProvider(providerName) {
  */
 function isModelAvailableOnProvider(providerName, modelKey) {
   return getModelsForProvider(providerName).includes(modelKey);
+}
+
+/**
+ * Resolve the actual API model name to send to a provider.
+ *
+ * - If `model` is a known key in MODELS, return that entry's `apiName`
+ *   (e.g. "llama-3.3-70b" -> "meta/llama-3.3-70b-instruct" for nvidia).
+ * - If `model` is already an apiName (not a key), return as-is.
+ * - If unknown, return as-is (caller may rely on provider defaults).
+ *
+ * @param {string} model - user-facing model key, apiName, or arbitrary string
+ * @returns {string} the name to send to the provider API
+ */
+function resolveApiName(model) {
+  if (!model) return model;
+  const entry = MODELS[model];
+  if (entry?.apiName) return entry.apiName;
+  return model;
 }
 
 const TIMEOUT_MS = 90_000;
@@ -214,7 +238,9 @@ function _resolveCall({ provider, model }) {
         `Provider yang aktif: ${avail.length ? avail.join(", ") : "(tidak ada)"}`
     );
   }
-  const resolvedModel = model || getDefaultModel(providerName);
+  // Resolve user-facing model key to the actual API name (e.g. short key
+  // "llama-3.3-70b" -> "meta/llama-3.3-70b-instruct" for nvidia).
+  const resolvedModel = resolveApiName(model || getDefaultModel(providerName));
   if (!resolvedModel) {
     throw new Error(
       `Model untuk provider "${providerName}" belum di-set. Gunakan /ai-set model <nama>.`
@@ -256,12 +282,15 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
       throw new Error("EMPTY_RESPONSE");
     }
 
-    // Capture token usage (silent on failure — never break user flow)
+    // Capture token usage (silent on failure — never break user flow).
+    // Use the user-facing model key (opts.model) if present, otherwise
+    // fall back to the resolved apiName. This keeps /ai-set view clean
+    // ("llama-3.3-70b" not "meta/llama-3.3-70b-instruct").
     if (completion?.usage) {
       try {
         aiTokenUsage.recordUsage({
           provider: providerName,
-          model: resolvedModel,
+          model: opts.model || resolvedModel,
           source: _source || "unknown",
           usage: completion.usage,
         });
@@ -327,6 +356,7 @@ module.exports = {
   prewarmAll,
   getModelsForProvider,
   isModelAvailableOnProvider,
+  resolveApiName,
   PROVIDERS,
   MODELS,
   MODEL_NAMES,
