@@ -9,6 +9,41 @@ dan project ini menggunakan versioning semantik.
 
 ## [Unreleased]
 
+### Added - Atomic Writes, Rate Limit Persistence, Token Monitoring
+
+#### Reliability
+
+- **`src/utils/jsonFile.js`** — shared atomic JSON helpers (`atomicWriteJsonSync` writes to `.tmp` then `fs.renameSync`, `readJsonSafeSync` never throws). Replaces 3 duplicate `writeFileSync` + try/catch patterns in `aiSettings.js`, `aiMemory.js`, `aiLimits.js`. Prevents partial writes if process is killed mid-write.
+- **`aiSettings.js` + `aiMemory.js`** — now use `atomicWriteJsonSync` for persistence. Same debounced write pattern (500ms) but crash-safe.
+- **`aiLimits.js`** — rate limit windows now persist to `data/aiLimits.json` (debounced 500ms). Counters survive bot restart. Expired windows cleaned on load. Hooked into `checkAndIncrement`, `resetForUser`, `resetAll`, and the GC interval.
+
+#### Token Monitoring
+
+- **`src/utils/aiTokenUsage.js`** — global + per-provider + per-source + per-model token tracking. Captures `completion.usage` from OpenAI SDK via `ai.js`. Cache hits = 0 tokens (no API call). All-time totals (no rolling window).
+- **`/ai-set tokens <action>`** subcommand (owner only):
+  - `stats` — global totals, per-provider, per-source (top 5), per-model (top 5), estimated cost
+  - `reset` — zero all stats (preserves `startedAt`)
+  - `cost <modelKey> <value>` — set USD per 1M tokens
+  - `costlist` — show all configured cost rates
+- **`/ai-set view`** — adds "Token Usage (all-time)" field showing total tokens, calls, estimated cost. Hidden if no calls yet.
+- **Configurable cost** — `aiSettings.json` `costPerMillion` map: `{ "MiniMax-M3": 0.15, "llama-3.3-70b": 0.65 }`. Models without entry contribute $0. Configurable via `/ai-set tokens cost`.
+
+#### Wiring
+
+- All AI call sites tag `_source` for accurate source breakdown: `chat` (chat.js), `roast` (roast.js, both paths), `aiplaylist` (aiplaylist.js), `classifier` (personalities.js), `extractFacts` (aiMemory.js).
+- `callAI` signature gained optional `_source` param. Backward compatible (defaults to `"unknown"`).
+
+#### Prefix Aliases
+
+- `.ais tokens` → `/ai-set tokens stats`
+- `.ais tokens reset` → `/ai-set tokens reset`
+- `.ais tokens cost <modelKey> <value>` → `/ai-set tokens cost`
+- `.ais tokens costlist` → `/ai-set tokens costlist`
+
+---
+
+## [Unreleased]
+
 ### Changed - Chat Embed Cleanup (Phase E)
 
 #### Removed

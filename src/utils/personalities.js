@@ -212,6 +212,7 @@ async function detectPersonality(userText) {
       ],
       temperature: 0.1,
       maxTokens: 30,
+      _source: "classifier",
     });
     const detected = _normalize(raw);
     return detected || "general";

@@ -19,13 +19,57 @@
  *   listLimitOverrides()     -> [{ userId, limit, bonus, effective }]
  */
 
+const path = require("path");
 const { config } = require("../config");
 const { getAISettings } = require("./aiSettings");
+const { atomicWriteJsonSync, readJsonSafeSync } = require("./jsonFile");
 
 // userId -> { count, windowStart }
 const _windows = new Map();
+let _writeTimer = null;
+const WRITE_DEBOUNCE_MS = 500;
+
+const dataDir = path.join(process.cwd(), "data");
+const file = path.join(dataDir, "aiLimits.json");
 
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function _loadWindows() {
+  if (_writeTimer !== null) return; // already loaded (writeTimer null = fresh module, but we use a flag)
+  // Use _windows.size as the "loaded" indicator — it's set on load
+  // Better: explicit flag
+}
+
+let _loaded = false;
+function _ensureLoaded() {
+  if (_loaded) return;
+  _loaded = true;
+  const parsed = readJsonSafeSync(file, { windows: {} });
+  const windows = parsed.windows || {};
+  const now = Date.now();
+  for (const [userId, w] of Object.entries(windows)) {
+    if (!w || typeof w.count !== "number" || typeof w.windowStart !== "number") continue;
+    // Skip expired windows on load — fresh start
+    if (now - w.windowStart >= WINDOW_MS) continue;
+    _windows.set(userId, { count: w.count, windowStart: w.windowStart });
+  }
+}
+
+function _scheduleWindowsSave() {
+  if (_writeTimer) clearTimeout(_writeTimer);
+  _writeTimer = setTimeout(() => {
+    _writeTimer = null;
+    try {
+      const out = { windows: {} };
+      for (const [userId, w] of _windows) {
+        out.windows[userId] = { count: w.count, windowStart: w.windowStart };
+      }
+      atomicWriteJsonSync(file, out);
+    } catch (e) {
+      console.error("[WARN] Failed to persist aiLimits:", e?.message || e);
+    }
+  }, WRITE_DEBOUNCE_MS);
+}
 
 function _getBaseLimit() {
   const s = getAISettings();
@@ -55,6 +99,7 @@ function getEffectiveLimit(userId) {
  * - If no current window or window expired: starts a new one (count = 1).
  */
 function checkAndIncrement(userId) {
+  _ensureLoaded();
   if (!userId) {
     return { allowed: false, remaining: 0, resetAt: null, reason: "no-user", limit: 0 };
   }
@@ -78,6 +123,7 @@ function checkAndIncrement(userId) {
   if (!w || now - w.windowStart >= WINDOW_MS) {
     w = { count: 1, windowStart: now };
     _windows.set(userId, w);
+    _scheduleWindowsSave();
     return {
       allowed: true,
       remaining: limit - 1,
@@ -98,6 +144,7 @@ function checkAndIncrement(userId) {
   }
 
   w.count += 1;
+  _scheduleWindowsSave();
   return {
     allowed: true,
     remaining: limit - w.count,
@@ -108,6 +155,7 @@ function checkAndIncrement(userId) {
 
 /** Get current state without mutating. */
 function peek(userId) {
+  _ensureLoaded();
   const effectiveLimit = getEffectiveLimit(userId);
   if (!userId) return { count: 0, limit: effectiveLimit, resetAt: null, effectiveLimit };
   if (config.discord.ownerId && userId === config.discord.ownerId) {
@@ -129,16 +177,20 @@ function peek(userId) {
 
 /** Reset limit counter for a specific user (owner only). */
 function resetForUser(userId) {
+  _ensureLoaded();
   if (!userId) return false;
   const had = _windows.has(userId);
   _windows.delete(userId);
+  if (had) _scheduleWindowsSave();
   return had;
 }
 
 /** Reset all limit counters (owner only). Returns number of users cleared. */
 function resetAll() {
+  _ensureLoaded();
   const count = _windows.size;
   _windows.clear();
+  if (count > 0) _scheduleWindowsSave();
   return count;
 }
 
@@ -165,6 +217,7 @@ function listLimitOverrides() {
  * Owner is excluded (they have no window).
  */
 function listAllLimits() {
+  _ensureLoaded();
   const now = Date.now();
   const out = [];
   for (const [userId, w] of _windows) {
@@ -203,6 +256,7 @@ function listAllLimits() {
  * Returns { count, limit, remaining, resetAt, minutesLeft, percent, isOwner, effectiveLimit, status }
  */
 function getUserLimitStatus(userId) {
+  _ensureLoaded();
   const isOwner = config.discord.ownerId && userId === config.discord.ownerId;
   if (isOwner) {
     return {
@@ -270,10 +324,16 @@ function getUserLimitStatus(userId) {
 
 // GC: clear entries whose window has expired
 setInterval(() => {
+  _ensureLoaded();
   const now = Date.now();
+  let removed = 0;
   for (const [uid, w] of _windows) {
-    if (now - w.windowStart >= WINDOW_MS) _windows.delete(uid);
+    if (now - w.windowStart >= WINDOW_MS) {
+      _windows.delete(uid);
+      removed++;
+    }
   }
+  if (removed > 0) _scheduleWindowsSave();
 }, 5 * 60 * 1000).unref();
 
 module.exports = {

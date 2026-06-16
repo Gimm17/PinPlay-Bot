@@ -173,6 +173,7 @@ async function _generateAndShow(interaction, client, query, user, vc) {
       ],
       temperature: 0.7,
       maxTokens: 2048,
+      _source: "aiplaylist",
     });
   } catch (err) {
     return interaction.editReply(`❌ ${err?.message || "AI gagal merespons."}`).catch(() => null);

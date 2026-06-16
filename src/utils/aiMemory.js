@@ -53,6 +53,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { atomicWriteJsonSync, readJsonSafeSync } = require("./jsonFile");
 const { getAISettings } = require("./aiSettings");
 const { callAI, isAIAvailable } = require("./ai");
 const { makeLogger } = require("./logger");
@@ -95,16 +96,11 @@ function ensure() {
 function _loadCache() {
   if (_cache !== null) return;
   ensure();
-  try {
-    const raw = fs.readFileSync(file, "utf-8");
-    const parsed = JSON.parse(raw || "{}");
-    _cache = {
-      users: typeof parsed.users === "object" && parsed.users ? parsed.users : {},
-      global: { ...EMPTY_GLOBAL, ...(parsed.global || {}) },
-    };
-  } catch {
-    _cache = { users: {}, global: { ...EMPTY_GLOBAL } };
-  }
+  const parsed = readJsonSafeSync(file, {});
+  _cache = {
+    users: typeof parsed.users === "object" && parsed.users ? parsed.users : {},
+    global: { ...EMPTY_GLOBAL, ...(parsed.global || {}) },
+  };
 }
 
 function _scheduleSave() {
@@ -112,8 +108,7 @@ function _scheduleSave() {
   _writeTimer = setTimeout(() => {
     _writeTimer = null;
     try {
-      ensure();
-      fs.writeFileSync(file, JSON.stringify(_cache, null, 2), "utf-8");
+      atomicWriteJsonSync(file, _cache);
     } catch (e) {
       console.error("[WARN] Failed to persist aiMemory:", e?.message || e);
     }
@@ -333,6 +328,7 @@ async function extractFactsFromMessage(userId, userText, _assistantText) {
       ],
       temperature: 0.3,
       maxTokens: 120,
+      _source: "extractFacts",
     });
     // Parse JSON array (defensive)
     const match = raw.match(/\[[\s\S]*?\]/);
