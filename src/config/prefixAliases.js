@@ -37,6 +37,9 @@ const NO_ARGS_ALIASES = {
 
   // roast (AI)
   roast: { command: "roast", parse: "none" },
+
+  // limit (Phase D) - cek status limit AI
+  limit: { command: "ai-limit", parse: "none" },
 };
 
 // === CATEGORY B: Single rest-of-string argument (3 commands) ===
@@ -47,6 +50,7 @@ const REST_STRING_ALIASES = {
   ly: { command: "lyrics", parse: "rest", option: "query", required: false },
   ap: { command: "aiplaylist", parse: "rest", option: "query", required: false },
   "p-yt": { command: "play-yt", parse: "rest", option: "query" },
+  chat: { command: "chat", parse: "rest", option: "prompt", required: true },
 };
 
 // === CATEGORY C: Single integer argument (3 commands) ===
@@ -95,6 +99,7 @@ const SUBCOMMAND_ALIASES = {
   panel: { command: "panel", parse: "subcommand:panel" },
   dj: { command: "djrole", parse: "subcommand:djrole" },
   access: { command: "access", parse: "subcommand:access" },
+  ais: { command: "ai-set", parse: "subcommand:ai-set" },
 };
 
 // === Full command names as aliases ===
@@ -129,6 +134,9 @@ const FULL_COMMAND_ALIASES = {
   aiplaylist: { command: "aiplaylist", parse: "rest", option: "query", required: false },
   "play-yt": { command: "play-yt", parse: "rest", option: "query" },
   roast: { command: "roast", parse: "none" },
+  chat: { command: "chat", parse: "rest", option: "prompt", required: true },
+  "ai-set": { command: "ai-set", parse: "subcommand:ai-set" },
+  "ai-limit": { command: "ai-limit", parse: "none" },
 };
 
 // === GABUNG SEMUA ALIASES ===
@@ -324,6 +332,156 @@ function parseSubcommand(type, args) {
           `Invalid subcommand. Must be one of: mode, allowuser, allowrole, requestchannel, view`
         );
       }
+
+      return new PrefixOptions(options);
+    }
+
+    case "ai-set": {
+      const validSubs = ["model", "limit", "whitelist", "userlimit", "bonus", "reset-limit", "memory", "fallback", "cache", "limits", "view"];
+      if (!validSubs.includes(subcommand)) {
+        throw new Error(
+          `Invalid sub. Must be one of: ${validSubs.join(", ")}`
+        );
+      }
+      const options = { _subcommand: subcommand };
+
+      if (subcommand === "model") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais model <MiniMax-M3|llama-3.3-70b>");
+        }
+        // Accept exact match (case-insensitive) against MODEL_NAMES
+        const { MODEL_NAMES } = require("../utils/ai");
+        const lower = rest[0].toLowerCase();
+        const match = MODEL_NAMES.find((n) => n.toLowerCase() === lower);
+        if (!match) {
+          throw new Error(
+            `Model tidak dikenal. Pilih: ${MODEL_NAMES.join(", ")}`
+          );
+        }
+        options.name = match;
+      } else if (subcommand === "limit") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais limit <number>");
+        }
+        const n = parseInt(rest[0], 10);
+        if (isNaN(n) || n < 1) {
+          throw new Error("Limit must be a positive integer");
+        }
+        options.value = n;
+      } else if (subcommand === "whitelist") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais whitelist <add|remove|list> [@user]");
+        }
+        options.action = rest[0].toLowerCase();
+        if (rest[1]) {
+          const mentionMatch = String(rest[1]).match(/^<@!?(\d+)>$/);
+          const idMatch = String(rest[1]).match(/^(\d{17,20})$/);
+          if (mentionMatch) {
+            options.user = mentionMatch[1];
+          } else if (idMatch) {
+            options.user = idMatch[1];
+          } else {
+            throw new Error("User gak valid. Pakai @mention atau user ID.");
+          }
+        }
+      } else if (subcommand === "userlimit") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais userlimit <set|remove|list> [@user] [value]");
+        }
+        options.action = rest[0].toLowerCase();
+        if (rest[1]) {
+          // Accept <@mention> or raw ID
+          const mentionMatch = String(rest[1]).match(/^<@!?(\d+)>$/);
+          const idMatch = String(rest[1]).match(/^(\d{17,20})$/);
+          if (mentionMatch) {
+            options.user = mentionMatch[1];
+          } else if (idMatch) {
+            options.user = idMatch[1];
+          } else {
+            throw new Error("User gak valid. Pakai @mention atau user ID.");
+          }
+        }
+        if (rest[2]) {
+          const n = parseInt(rest[2], 10);
+          if (isNaN(n) || n < 1) throw new Error("Value must be a positive integer");
+          options.value = n;
+        }
+      } else if (subcommand === "bonus") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais bonus <set|add|remove|list> [@user] [value]");
+        }
+        options.action = rest[0].toLowerCase();
+        if (rest[1]) {
+          const mentionMatch = String(rest[1]).match(/^<@!?(\d+)>$/);
+          const idMatch = String(rest[1]).match(/^(\d{17,20})$/);
+          if (mentionMatch) {
+            options.user = mentionMatch[1];
+          } else if (idMatch) {
+            options.user = idMatch[1];
+          } else {
+            throw new Error("User gak valid. Pakai @mention atau user ID.");
+          }
+        }
+        if (rest[2] !== undefined) {
+          const n = parseInt(rest[2], 10);
+          if (isNaN(n)) throw new Error("Value must be an integer");
+          options.value = n;
+        }
+      } else if (subcommand === "reset-limit") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais reset-limit <@user|all|userid>");
+        }
+        const arg = rest[0].toLowerCase();
+        if (arg === "all") {
+          options.target = "all";
+        } else {
+          // Accept <@mention>, <@!mention> (nickname), or raw 17-20 digit ID
+          const mentionMatch = String(rest[0]).match(/^<@!?(\d+)>$/);
+          const idMatch = String(rest[0]).match(/^(\d{17,20})$/);
+          if (mentionMatch) {
+            options.user = mentionMatch[1];
+          } else if (idMatch) {
+            options.user = idMatch[1];
+          } else {
+            throw new Error(
+              "Argument gak valid. Pakai: .ais reset-limit <@user|all|userid>"
+            );
+          }
+        }
+      } else if (subcommand === "memory") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais memory <view|set|clear|global> [@user] [field] [value]");
+        }
+        options.action = rest[0].toLowerCase();
+        if (rest[1]) {
+          const mentionMatch = String(rest[1]).match(/^<@!?(\d+)>$/);
+          const idMatch = String(rest[1]).match(/^(\d{17,20})$/);
+          if (mentionMatch) {
+            options.user = mentionMatch[1];
+          } else if (idMatch) {
+            options.user = idMatch[1];
+          } else {
+            throw new Error("User gak valid. Pakai @mention atau user ID.");
+          }
+        }
+        if (rest[2]) options.field = rest[2];
+        if (rest.slice(3).length > 0) options.value = rest.slice(3).join(" ");
+      } else if (subcommand === "fallback") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais fallback <on|off>");
+        }
+        const v = rest[0].toLowerCase();
+        if (!["on", "off", "true", "false"].includes(v)) {
+          throw new Error("Value must be: on|off");
+        }
+        options.enabled = ["on", "true"].includes(v);
+      } else if (subcommand === "cache") {
+        if (rest.length === 0) {
+          throw new Error("Usage: .ais cache <stats|clear>");
+        }
+        options.action = rest[0].toLowerCase();
+      }
+      // view: no extra args
 
       return new PrefixOptions(options);
     }

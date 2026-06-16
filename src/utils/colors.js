@@ -15,6 +15,7 @@ const Colors = {
   IDLE:     0xB8C4CE,  // Soft gray-blue — no music playing / idle state
   ROAST:    0xEFAAB9,  // Secondary soft pink — AI roast feature
   AI:       0xA5D6F1,  // Primary — AI playlist feature
+  CHAT:     0xC9A6E0,  // Soft purple — AI chat feature
 };
 
 module.exports = { Colors };

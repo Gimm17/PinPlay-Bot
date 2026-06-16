@@ -203,6 +203,27 @@ const PREFIX_COMMANDS = [
     desc: "AI roast lagu yang lagi diputar + yang request-nya. Lucu-lucuan.",
     example: `${P}roast`,
   },
+  {
+    alias: `${P}chat`,
+    command: "chat",
+    usage: `${P}chat <pesan> [--<personality>]`,
+    desc: "Ngobrol sama AI (auto-detect personality). Reply pesan bot untuk lanjut. Owner + whitelist. Owner bisa tambah `--puisi` di akhir buat force personality one-shot.",
+    example: `${P}chat buatin puisi tentang hujan --puisi`,
+  },
+  {
+    alias: `${P}limit`,
+    command: "ai-limit",
+    usage: `${P}limit`,
+    desc: "Cek sisa request AI kamu (ephemeral, gak makan quota). Progress bar + reset timer.",
+    example: `${P}limit`,
+  },
+  {
+    alias: `${P}ais`,
+    command: "ai-set",
+    usage: `${P}ais <model|limit|userlimit|bonus|reset-limit|whitelist|memory|fallback|cache|limits|view>`,
+    desc: "[Owner] Atur setting global AI. Model: MiniMax-M3 | llama-3.3-70b. Sub: model, limit, userlimit, bonus, reset-limit, whitelist, memory, fallback, cache, limits, view.",
+    example: `${P}ais model MiniMax-M3`,
+  },
 ];
 
 function buildHelpV2Embed() {
@@ -220,7 +241,7 @@ function buildHelpV2Embed() {
     ["panel", "access", "djrole", "24/7 mode"].includes(c.command)
   );
   const ai = PREFIX_COMMANDS.filter((c) =>
-    ["aiplaylist", "roast"].includes(c.command)
+    ["aiplaylist", "roast", "chat", "ai-limit", "ai-set"].includes(c.command)
   );
 
   const formatList = (list) =>

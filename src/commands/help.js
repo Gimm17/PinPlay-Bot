@@ -208,7 +208,7 @@ const COMMANDS = [
       "Buat playlist otomatis pake AI. Kasih tema/mood, AI bakal cariin 10-15 lagu yang cocok.\n" +
       "Contoh tema: 'galau indo viral', 'nongkrong santai', 'workout energik'.\n" +
       "Hasilnya muncul dengan tombol Konfirmasi — klik buat masukin semua lagu ke queue.\n" +
-      "Wajib join voice channel. Butuh NVIDIA_API_KEY di .env.",
+      "Wajib join voice channel. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.",
     examples: [
       "/aiplaylist query: lagu galau indo viral",
       ".ap lagu galau indo viral",
@@ -221,8 +221,75 @@ const COMMANDS = [
     detail:
       "AI roast lagu yang lagi diputar + orang yang request-nya. Buat lucu-lucuan.\n" +
       "Kalau gaada lagu, AI bakal roast kamu instead. Bahasa Indonesia gaul.\n" +
-      "Butuh NVIDIA_API_KEY di .env.",
+      "Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.",
     examples: ["/roast", ".roast"],
+  },
+  {
+    name: "chat",
+    usage: "/chat prompt:<pesan> [personality:<nama>]",
+    detail:
+      "Ngobrol sama AI kayak ChatGPT/Claude/Gemini. AI bakal auto-detect personality yang paling cocok dari pesan kamu (13 personalities: general, roast-galau, roast-pemerintah, romantis, puisi, motivator, coding-helper, storyteller, debate, gym-buddy, chef, game-strategist, joker).\n" +
+      "**Owner:** bisa force personality dengan `personality:` option (slash) atau `--<nama>` di akhir pesan (prefix). Personality cuma berlaku untuk 1 chat itu, gak persist ke reply berikutnya.\n" +
+      "**User biasa:** selalu auto-detect, gak bisa force.\n" +
+      "**Reply pesan bot untuk lanjutin conversation** (expire 10 menit gaada aktivitas).\n" +
+      "**Restricted:** owner + whitelist aja. Default 5 request/jam (owner bypass).\n" +
+      "Cek sisa limit: `/ai-limit` atau `.limit`.\n" +
+      "Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.",
+    examples: [
+      "/chat prompt: buatin puisi tentang hujan",
+      "/chat prompt: jelasin apa itu black hole",
+      "/chat prompt: halo personality:romantis (khusus owner)",
+      ".chat cerita dong lucu",
+      ".chat cerpen horror tentang kuburan --storyteller (khusus owner)",
+      ".chat debug error ini dong --coding-helper (khusus owner)",
+    ],
+  },
+  {
+    name: "ai-limit",
+    usage: "/ai-limit",
+    detail:
+      "Cek sisa request AI kamu. Self-service, ephemeral (cuma kamu yang liat), **gak makan quota**.\n" +
+      "Output: progress bar, used/total, sisa request, reset timer dalam menit.\n" +
+      "Owner lihat: bypass (unlimited).\n" +
+      "User biasa: pakai effective limit (override > bonus > base).",
+    examples: ["/ai-limit", ".limit", ".ai-limit"],
+  },
+  {
+    name: "ai-set",
+    usage: "/ai-set <subcommand>",
+    detail:
+      "**[Owner only]** Atur setting global AI (berlaku untuk /chat, /aiplaylist, /roast):\n" +
+      "• `model <MiniMax-M3|llama-3.3-70b>` — pilih model. **Provider otomatis ter-set** sesuai model.\n" +
+      "• `limit <angka>` — global per-user hourly limit (default 5, owner bypass)\n" +
+      "• `userlimit <set|remove|list> [@user] [value]` — per-user override limit\n" +
+      "• `bonus <set|add|remove|list> [@user] [value>` — per-user bonus/penalty (bisa negatif)\n" +
+      "• `reset-limit [@user|all]` — manual reset counter window user / semua user\n" +
+      "• `whitelist <add|remove|list> [@user]` — manage user yang boleh pakai /chat\n" +
+      "• `memory <view|set|clear|global> [@user] [field] [value]` — manage AI memory\n" +
+      "• `fallback <on|off>` — toggle auto-fallback ke provider alternatif\n" +
+      "• `cache <stats|clear>` — manage prompt cache (untuk /roast)\n" +
+      "• `limits` — monitor semua user yang lagi pakai AI dalam window 1 jam\n" +
+      "• `view` — lihat semua setting sekarang\n\n" +
+      "Pilihan model:\n" +
+      "  ◦ `llama-3.3-70b` → NVIDIA Build (meta/llama-3.3-70b-instruct)\n" +
+      "  ◦ `MiniMax-M3` → TokenRouter (MiniMax-M3, ringan & cepat)\n\n" +
+      "Memory fields: `nickname`, `mood`, `genre`, `artist`, `interests`. Pisahkan array dengan koma.\n\n" +
+      "Setting disimpan di `data/aiSettings.json` (auto-saved).",
+    examples: [
+      "/ai-set model MiniMax-M3",
+      "/ai-set model llama-3.3-70b",
+      "/ai-set limit 10",
+      "/ai-set userlimit set user:@user 20",
+      "/ai-set bonus add user:@user 5",
+      "/ai-set reset-limit user:@spammer",
+      "/ai-set reset-limit target:all",
+      "/ai-set whitelist add user:@user",
+      "/ai-set memory view user:@user",
+      "/ai-set memory set user:@user field:genre value:indie,lofi",
+      "/ai-set fallback on",
+      "/ai-set limits",
+      "/ai-set view",
+    ],
   },
 ];
 
@@ -276,7 +343,7 @@ function buildAllHelpSummaryEmbed() {
     "leave",
   ];
   const setup = ["panel", "access", "djrole", "247"];
-  const ai = ["aiplaylist", "roast"];
+  const ai = ["aiplaylist", "roast", "chat", "ai-limit", "ai-set"];
 
   embed.addFields(
     { name: "🎵 Music", value: music.map((c) => `\`/${c}\``).join("  ") },

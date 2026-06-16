@@ -26,6 +26,17 @@ function attachMessageHandler(client) {
     // === Guard clauses ===
     if (message.author.bot) return; // Ignore bot messages
     if (!message.guild) return; // Ignore DMs
+
+    // === Chat reply-to-continue detection (runs before prefix check) ===
+    if (message.reference?.messageId) {
+      const ref = message.reference.messageId;
+      const owner = client._chatBotsLastReply?.get(ref);
+      if (owner && owner.userId === message.author.id) {
+        const { handleChatReply } = require("../commands/chat");
+        return handleChatReply(message, client, owner.session);
+      }
+    }
+
     if (!message.content.startsWith(config.prefix)) return; // No prefix
 
     // === Parse alias ===
