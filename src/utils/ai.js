@@ -64,6 +64,40 @@ const MODELS = {
 
 const MODEL_NAMES = Object.keys(MODELS);
 
+/**
+ * Derived map: provider name -> array of model keys for that provider.
+ * Auto-built from MODELS so adding a model to MODELS automatically registers
+ * it under the right provider. Used by fallback logic to check if the
+ * original model is also available on the fallback provider (no swap needed).
+ */
+const MODELS_BY_PROVIDER = Object.keys(MODELS).reduce((acc, modelKey) => {
+  const provider = MODELS[modelKey].provider;
+  if (!acc[provider]) acc[provider] = [];
+  acc[provider].push(modelKey);
+  return acc;
+}, {});
+
+/**
+ * Get all model keys registered for a given provider.
+ * @param {string} providerName
+ * @returns {string[]} array of model keys (may be empty if provider unknown)
+ */
+function getModelsForProvider(providerName) {
+  return Array.isArray(MODELS_BY_PROVIDER[providerName])
+    ? [...MODELS_BY_PROVIDER[providerName]]
+    : [];
+}
+
+/**
+ * Check whether a model key is registered for a given provider.
+ * @param {string} providerName
+ * @param {string} modelKey
+ * @returns {boolean}
+ */
+function isModelAvailableOnProvider(providerName, modelKey) {
+  return getModelsForProvider(providerName).includes(modelKey);
+}
+
 const TIMEOUT_MS = 90_000;
 const _clients = new Map();
 
@@ -250,6 +284,18 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
     if (status === 429) {
       throw new Error("AI lagi ke-rate limit. Tunggu sebentar dan coba lagi.");
     }
+    if (status === 404) {
+      // Model name not found on this provider. Surface actionable hint so
+      // owner knows exactly what to do (switch model via /ai-set).
+      const available = getModelsForProvider(providerName);
+      const availHint = available.length
+        ? ` Model yang tersedia di \`${providerName}\`: ${available.join(", ")}.`
+        : ` Provider \`${providerName}\` belum punya model yang terdaftar.`;
+      throw new Error(
+        `Model \`${resolvedModel}\` gak ada di provider \`${providerName}\`.${availHint} ` +
+          `Coba \`/ai-set model <nama>\` atau pastikan nama model bener.`
+      );
+    }
     if (err?.message === "EMPTY_RESPONSE") {
       throw new Error("AI ngasih respons kosong. Coba lagi.");
     }
@@ -279,7 +325,10 @@ module.exports = {
   getDefaultProviderName,
   getDefaultModel,
   prewarmAll,
+  getModelsForProvider,
+  isModelAvailableOnProvider,
   PROVIDERS,
   MODELS,
   MODEL_NAMES,
+  MODELS_BY_PROVIDER,
 };
