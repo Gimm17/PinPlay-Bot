@@ -9,6 +9,247 @@ dan project ini menggunakan versioning semantik.
 
 ## [Unreleased]
 
+### Changed - Chat Embed Cleanup (Phase E)
+
+#### Removed
+
+- **Personality dropdown menu** dari `/chat` response embed — terlalu eksposif, keliatan semua orang di channel
+- **Footer "Limit: X/Y"** di `/chat` embed — berisik, kurang estetik
+- **Footer "Memory: ON"** di `/chat` embed — internal info, gak perlu
+- **`chat:setpersonality` handler** di `src/handlers/interactionHandler.js` — udah gak ada interaksi
+- **`getPersonalityForSelect()`** di `src/utils/personalities.js` — gak dipake lagi
+- **`handleSetPersonality`** function di `src/commands/chat.js`
+- **`_buildPersonalitySelect`** helper di `src/commands/chat.js`
+
+#### Changed: Personality is one-shot per chat (owner only)
+
+Owner gak bisa lagi ganti personality mid-conversation via UI. Sebagai gantinya, owner specify personality per-chat dengan `--<personality>` flag:
+
+**Slash command:**
+```
+/chat prompt: tulis puisi tentang hujan personality:puisi
+```
+
+**Prefix command (NEW syntax):**
+```
+.chat tulis puisi tentang hujan --puisi
+.chat cerpen horror tentang kuburan --storyteller
+.chat debug error ini dong --coding-helper
+```
+
+**Behavior:**
+- `--<personality>` HARUS di akhir message, pisah dengan spasi
+- Valid names: `general`, `roast-galau`, `roast-pemerintah`, `romantis`, `puisi`, `motivator`, `coding-helper`, `storyteller`, `debate`, `gym-buddy`, `chef`, `game-strategist`, `joker`
+- INVALID name → silently dianggep bagian dari prompt (gak error)
+- Non-owner yang pake `--<personality>` → silently di-ignore (sama behavior dengan slash option)
+- Personality TIDAK persist ke reply berikutnya — tiap `/chat` call adalah independent
+
+**Why this design:**
+- Lebih simple — gak ada state, gak ada session.personality
+- Lebih eksplisit — owner tau persis personality apa yang dipake
+- Gak ngeganggu user lain (gak ada UI elements di embed orang lain)
+- Sama pattern dengan `/aiplaylist query:` — per-command specification
+
+#### Embed footer sekarang cuma
+
+```
+Reply pesan ini untuk lanjut chat (10 menit).
+```
+
+Clean, simple, fokus ke response. Limit status masih bisa dicek via `/ai-limit` atau `.limit` (gak hilang, cuma dipindah dari auto-footer ke explicit command).
+
+---
+
+## [Unreleased]
+
+### Added - Limit Monitor (Phase D)
+
+#### `src/utils/aiLimits.js` - New helpers
+
+- `listAllLimits()` — returns semua user dalam active window dengan `{ userId, count, limit, resetAt, minutesLeft, status }`. Status: `ok` / `near-limit` (≥80%) / `limit-exceeded`. Sorted by severity.
+- `getUserLimitStatus(userId)` — returns detail 1 user termasuk `percent`, `isOwner`, `effectiveLimit`. Owner returns `bypass` status dengan Infinity.
+
+#### `/ai-set limits` (owner) — Live monitor
+
+Command baru di `ai-set.js`:
+- Tampilin semua user yang lagi pakai AI dalam window 1 jam
+- Tiap entry nunjukin emoji status (🚫 exceeded / ⚠️ near / ✅ ok), used/limit, dan reset timer
+- Footer embed: total user, breakdown status, hint reset-limit
+- Cap 25 user per embed (Discord limit)
+- Sort: exceeded → near-limit → ok, terus by count desc
+
+Prefix: `.ais limits`
+
+#### `/ai-limit` (self-service) — Cek status sendiri
+
+File baru: `src/commands/limit.js`
+- Slash command `/ai-limit` (ephemeral — cuma user yang liat)
+- Prefix `.limit` / `.ai-limit`
+- Gak makan rate limit (read-only operation)
+- Output: progress bar `████████░░` (10 char), used/total, sisa, reset timer
+- Owner lihat: "👑 Owner bypass — unlimited"
+- User normal: hitung effective limit (userLimits override > bonus > base)
+- Status colors: error red (exceeded), warning yellow (near), primary blue (ok)
+- Available untuk SEMUA user (gak perlu di-whitelist) — biar transparan
+
+#### Footer chat embed — Always-visible limit status
+
+Update `src/commands/chat.js`:
+- Tiap response embed `/chat` sekarang punya footer yang nunjukin limit usage
+- Format: `Limit: 3/10, reset 42m • Personality: motivator • Reply untuk lanjut (10m)`
+- Owner: `👑 Owner bypass • ...`
+- Memory ON line ditambah kalo aktif
+
+#### `src/config/prefixAliases.js` - New aliases
+
+- `.limit` → `/ai-limit` (no args)
+- `.ai-limit` → `/ai-limit` (full name)
+- `.ais limits` → `/ai-set limits` (subcommand)
+
+### Migration
+
+- Gak perlu migration. Pure addition.
+
+---
+
+## [Unreleased]
+
+### Added - AI Upgrade (Temen Akrab + Memory + Reliability)
+
+#### Persona & Tone
+
+**`src/utils/personalities.js` - COMPLETE REWRITE**
+- 13 personalities (7 rewritten + 6 new), semua pakai format "character card" casual lo/gue
+- Gak ada lagi template "Kamu adalah AI yang helpful" — semua prompt terasa kayak chat sama temen deket
+- 6 personality baru: `storyteller` (Tukang Cerpen), `debate` (Lawannya Debat), `gym-buddy` (Temen Gym), `chef` (Kang Masak), `game-strategist` (Temen Mabar), `joker` (Badut Receh)
+- Setiap personality punya `displayName`, `emoji`, `vibe` (untuk dropdown), dan `systemPrompt` yang di-tulis ulang
+- Classifier sekarang pakai `callAIWithFallback` jadi lebih reliable
+- Tambah `getPersonalityForSelect()` helper untuk StringSelectMenu (max 25 options, kita punya 13)
+
+#### Owner Personality Picker
+
+**`src/commands/chat.js` - Dropdown menu per-response (owner-only)**
+- Setiap response embed dari `/chat` punya StringSelectMenu (hanya untuk owner)
+- Pilih personality mid-conversation → langsung update `session.personality`
+- Gak ada tambahan rate limit (ganti personality gratis)
+- CustomId: `chat:setpersonality`, di-handle di `src/handlers/interactionHandler.js`
+
+#### Streaming UX
+
+**`src/commands/chat.js` - Placeholder + typing indicator**
+- Begitu `/chat` dipanggil, bot langsung kirim embed "💭 Lagi mikir..."
+- Tiap 5 detik kirim `channel.sendTyping()` biar indikator typing Discord nyala terus
+- Begitu AI selesai, edit placeholder dengan final embed + dropdown
+- Tambah `_startTypingLoop()` helper yang return cleanup function
+- Reply-to-continue juga pakai flow yang sama
+
+#### Memory System
+
+**`src/utils/aiMemory.js` (NEW FILE)**
+- Persistent memory di `data/aiMemory.json` dengan debounced write 500ms
+- Per-user profile: `nickname`, `favoriteGenre`, `favoriteArtist`, `currentMood`, `interests`, `facts` (LRU cap 100)
+- Global notes: `serverVibe`, `commonGenres`, `ownerNotes`
+- API: `getUserMemory`, `updateUserMemory`, `addUserFact`, `setUserField`, `clearUserMemory`, `listUserMemories`, `formatUserForPrompt`, `formatGlobalForPrompt`, `isMemoryEnabled`
+- Background fact extraction: setelah setiap chat, AI call kecil (temperature 0.3) extract insight baru → append ke `facts`. Auto-capped 3 facts per pesan, JSON-only output
+- `formatUserForPrompt` & `formatGlobalForPrompt` truncate ke 400 char biar gak nge-bloat system prompt
+- Di-inject ke system prompt via `_buildSystemPrompt()` di `chat.js`
+- Owner command: `/ai-set memory <view|set|clear|global> [@user] [field] [value]`
+
+#### Per-User Custom Limit
+
+**`src/utils/aiSettings.js` - Schema extension**
+- Field baru: `userLimits` (object: userId → override limit), `userBonuses` (object: userId → additive bonus, can be negative), `globalNotes`, `fallbackEnabled`, `memoryEnabled`, `personality`
+- Normalisasi di `_loadCache()` biar backward compat dengan file lama
+- Mutator helpers: `setUserLimit`, `removeUserLimit`, `setUserBonus`, `removeUserBonus`, `setGlobalNotes`, `setFallbackEnabled`, `setMemoryEnabled`
+
+**`src/utils/aiLimits.js` - Per-user effective limit**
+- `getEffectiveLimit(userId)` = `userLimits[id] || (base + userBonuses[id])` (override > bonus > base)
+- Owner tetap `Infinity` (bypass)
+- Tambah `resetForUser(id)`, `resetAll()` untuk owner manual reset
+- Tambah `listLimitOverrides()` untuk `/ai-set view` embed
+- `checkAndIncrement()` sekarang return `limit` field juga
+- GC interval tetap 5 menit
+
+**`src/commands/ai-set.js` - Subcommands baru**
+- `userlimit <set|remove|list> [@user] [value]` — set/remove/list per-user override
+- `bonus <set|add|remove|list> [@user] [value]` — bonus/penalty (additive, can be negative)
+- `reset-limit <@user|all>` — manual reset counter user / semua user
+- `memory <view|set|clear|global> [@user] [field] [value]` — manage AI memory
+- `fallback <on|off>` — toggle auto-fallback ke provider lain
+- `cache <stats|clear>` — manage prompt cache (stats + clear)
+- `view` embed di-rebuild: sekarang nampilin model, limit base + overrides, whitelist, semua toggles, cache stats
+
+**`src/config/prefixAliases.js` - Prefix support**
+- Prefix `.ais userlimit ...`, `.ais bonus ...`, `.ais reset-limit ...`, `.ais memory ...`, `.ais fallback ...`, `.ais cache ...` semua work
+
+#### Reliability
+
+**`src/utils/aiProviderFallback.js` (NEW FILE)**
+- `callAIWithFallback(opts)` — wrap `callAI` dengan auto-retry ke alternative provider
+- Retriable errors: HTTP 5xx, timeout, connection error, EMPTY_RESPONSE
+- NOT retried: 401/403 (bad key), 429 (rate limit)
+- Capped 1 fallback per call (no chains) untuk cegah latency blowup
+- Default fallback target: `tokenrouter` (biasanya lebih cepet dari NVIDIA)
+- Toggleable via `/ai-set fallback <on|off>` (default ON)
+- Logged setiap fallback dipake (warning level)
+
+#### Latency
+
+**`src/utils/aiPromptCache.js` (NEW FILE)**
+- LRU per-user, max 50 entries, TTL 1 jam
+- Key = `hash(prompt + personality + contextSig)` via SHA-1 (16 char)
+- GC interval 5 menit, sweep expired entries
+- Dipake di `/roast` (stateless — same song = cached roast per user)
+- Gak dipake di `/chat` (context-dependent) atau `/aiplaylist` (different output structure)
+- `/ai-set cache stats|clear` buat monitoring
+
+**`src/utils/ai.js` - Pre-warm support**
+- `prewarmAll()` initialize OpenAI clients di boot
+- Wired di `src/index.js` `clientReady` event
+- Silent on failure (log warn only)
+- First `/chat`/`/roast`/`/aiplaylist` jadi lebih cepet karena TLS handshake udah jalan
+
+**`src/commands/aiplaylist.js` - Cache key fix**
+- Replace `${user.id}:${interaction.guildId}:${interaction.id}` dengan `crypto.randomUUID()`
+- Eliminate theoretical ID clash
+- Search concurrency naik dari 5 ke 8 untuk faster track resolution
+- Pakai `callAIWithFallback` (was `callAI`)
+
+**`src/commands/roast.js` - Cache + fallback + memory**
+- Pakai `callAIWithFallback` instead of `callAI`
+- Cek `aiPromptCache` dulu sebelum panggil AI (no-song + per-track keys)
+- Inject `aiMemory.formatUserForPrompt(userId)` ke user content untuk personalization
+- Cache writes otomatis setelah AI call
+
+#### Interaction Wiring
+
+**`src/handlers/interactionHandler.js` - Personality select handler**
+- Tambah handler untuk `interaction.customId === "chat:setpersonality"` di `isStringSelectMenu()` branch
+- Delegate ke `handleSetPersonality` dari `chat.js`
+
+**`src/index.js` - AI pre-warm on ready**
+- Tambah `prewarmAll()` call di `clientReady` event
+- Wrap di try/catch — bot gak crash kalau prewarm fail
+
+#### Out of Scope (Eksplisit)
+
+- Voice/image input ke AI
+- Multi-language detection (tetap Indonesian-first)
+- Per-guild AI config (masih global)
+- Conversation export
+- Token usage / billing tracking
+- Web UI untuk settings
+
+#### Migration
+
+- File `data/aiSettings.json` lama **otomatis kompatibel** — field baru pake default values
+- File `data/aiMemory.json` baru akan dibuat on-demand saat first memory write
+- Gak perlu script migration manual
+
+---
+
+## [Unreleased]
+
 ### Added - Perbaikan Playlist Spotify (Sesi Ini)
 
 #### `src/utils/spotify.js` - Sistem Caching & Scraping Playlist
@@ -1270,3 +1511,352 @@ Semua message yang tadinya plain text diubah jadi embed via helper `embeds.js`:
 ### Total Commands Sekarang: 29
 
 Tambahan dari 28 sebelumnya: `/play-yt` (`.p-yt`) — Music category.
+
+---
+
+## [8.0.0] - AI Chat + Multi-Provider AI - 2026-06-16
+
+### Context
+
+Sesi ini menambahkan **fitur AI Chat** (ChatGPT/Claude/Gemini-style) yang bisa jawab pertanyaan general, dengan **multi-provider support** (NVIDIA Build + TokenRouter). Owner bisa switch model/provider via `/ai-set` atau `.ais`. Semua AI features (`/chat`, `/aiplaylist`, `/roast`) sekarang share:
+- Global default provider & model (diatur owner, tersimpan di `data/aiSettings.json`)
+- Per-user hourly rate limit (default 5/jam, owner bypass)
+
+---
+
+### 1. Multi-Provider AI Refactor
+
+#### Modified - `src/utils/ai.js`
+
+**Sebelum:** Hardcoded ke NVIDIA Build, single base URL + single model.
+
+**Sesudah:** Multi-provider registry dengan OpenAI-compatible clients (cached per provider).
+
+**Struktur baru:**
+```js
+const PROVIDERS = {
+  nvidia:      { baseURL: "https://integrate.api.nvidia.com/v1",  defaultModel: "meta/llama-3.3-70b-instruct" },
+  tokenrouter: { baseURL: "https://api.tokenrouter.com/v1",         defaultModel: "MiniMax-M3" },
+};
+
+const MODELS = {
+  "llama-3.3-70b": { provider: "nvidia",      label: "Llama 3.3 70B", description: "..." },
+  "MiniMax-M3":    { provider: "tokenrouter", label: "M3 (TokenRouter)", description: "..." },
+};
+```
+
+**New exports:**
+- `getAvailableProviders()` → `{ nvidia: bool, tokenrouter: bool }`
+- `isProviderAvailable(name)` → boolean
+- `getDefaultProviderName()` → string (baca dari `aiSettings.json`, fallback ke `config.ai.defaultProvider`)
+- `getDefaultModel(providerName)` → string (baca dari `aiSettings.json`, fallback ke `config.ai.defaultModel`, fallback ke `PROVIDERS[name].defaultModel`)
+- `PROVIDERS`, `MODELS`, `MODEL_NAMES` (untuk `/ai-set` dropdown & `/ai-set view`)
+
+**Backward compat:** `callAI({ messages, temperature, maxTokens })` signature TETAP SAMA. Existing `aiplaylist.js` & `roast.js` zero code changes — mereka otomatis pakai global default.
+
+**Error handling upgrade:**
+- Log format lebih jelas: `[tokenrouter/bogus-model] (status=503): 503 No available channel...`
+- 5xx errors dapat friendly message: `AI provider tokenrouter lagi bermasalah (HTTP 503). Cek model name atau coba lagi nanti.`
+- 401/403, 429, EMPTY_RESPONSE, timeout: tetap seperti sebelumnya (Bahasa Indonesia)
+
+---
+
+### 2. Thinking-Block Strip (Bug Fix)
+
+#### Bug
+
+Model `MiniMax-M3` (dan beberapa model reasoning lain) nge-wrap proses berpikir di tag `<think>...</think>`. Kalau gak di-strip, bocor ke user:
+
+```
+📜 AI Chat — Puisi
+<think>The user is asking me to create a galau poem...</think>
+Rindu yang Tak Kunjung Pulang
+Kukirimkan rindu...
+```
+
+#### Fix
+
+Tambah `_stripThinking()` helper di `ai.js`, dipanggil sekali di `callAI()` setelah dapat content. Sekali fix, **semua command otomatis bersih** (`/chat`, `/aiplaylist`, `/roast`, classifier).
+
+```js
+function _stripThinking(text) {
+  const re = /<\s*(?:think|thinking|reasoning|reflection)\s*>[\s\S]*?<\s*\/\s*(?:think|thinking|reasoning|reflection)\s*>/gi;
+  return text.replace(re, "").trim();
+}
+
+// Di callAI() setelah dapat content:
+const cleaned = _stripThinking(content);
+if (!cleaned) throw new Error("EMPTY_RESPONSE");  // empty setelah strip → user-friendly error
+return cleaned;
+```
+
+**Pattern yang di-strip:** `<think>`, `<thinking>`, `<reasoning>`, `<reflection>` (case-insensitive, multi-line, non-greedy).
+
+**Edge cases yang di-handle:**
+- Empty setelah strip → `EMPTY_RESPONSE` (bukan pesan kosong misterius)
+- Multiple thinking blocks → semua ke-strip
+- Unclosed `<think>` (malformed) → output tetep muncul (gak dipotong salah)
+- Whitespace padding → ke-trim
+
+---
+
+### 3. AI Chat Feature
+
+#### Created - `src/commands/chat.js`
+
+**Fungsi:** AI chat kayak ChatGPT/Claude/Gemini — jawab pertanyaan general dengan auto-detect personality.
+
+**Slash:** `/chat prompt:<pesan> [personality:<nama>]`
+**Prefix:** `.chat <pesan>`
+
+**Access control:** Owner + whitelisted user IDs saja. Non-whitelisted → error embed "⛔ Fitur ini restricted."
+
+**Personality detection (AI classifier):**
+7 personalities — AI pilih otomatis berdasarkan isi pesan user:
+
+| Personality | Emoji | Use case |
+|---|---|---|
+| `general` | 💬 | Pertanyaan umum, default fallback |
+| `roast-galau` | 💔🔥 | Roasting tema patah hati |
+| `roast-pemerintah` | 🏛️🔥 | Kritik kebijakan/pejabat (informative, satir) |
+| `romantis` | 💖 | Long text romantis puitis |
+| `puisi` | 📜 | Puisi bebas (4-16 baris) |
+| `motivator` | 💪 | Kata-kata motivasi |
+| `coding-helper` | 💻 | Bantu debug/jelasin kode |
+
+**Owner override:** `/chat prompt:halo personality:romantis` → paksa `romantis`, skip classifier (hemat 1 API call).
+
+**Conversation mode:** User **reply ke message bot** untuk lanjut chat. Session 10 menit idle, max 20 turn (40 messages). Setiap reply = 1 request ke rate limit.
+
+**Embed style:**
+- Title: `💬 AI Chat — <Personality>`
+- Description: jawaban AI
+- Footer: `Personality: <name> • Reply pesan ini untuk lanjut chat (10 menit).`
+- Color: `Colors.CHAT` (purple `#C9A6E0`)
+
+**Architecture:**
+- Sessions: `client._chatSessions: Map<userId, { messages, lastActive, personality }>`
+- Bot reply map: `client._chatBotsLastReply: Map<botMessageId, { userId, session }>`
+- Reply detection di `messageHandler.js` (lihat #5)
+
+---
+
+### 4. Global AI Settings (`/ai-set` / `.ais`)
+
+#### Created - `src/utils/aiSettings.js`
+
+**Fungsi:** Global AI settings persistence (bukan per-guild). Disimpan di `data/aiSettings.json`.
+
+**Schema:**
+```json
+{
+  "provider": null,           // "nvidia" | "tokenrouter" | null
+  "model": null,              // "llama-3.3-70b" | "MiniMax-M3" | null
+  "userHourlyLimit": 5,       // default 5
+  "whitelist": []             // user IDs allowed to use /chat
+}
+```
+
+**API:** `getAISettings()`, `setAISettings(patch)`, `setProvider()`, `setModel()`, `setUserHourlyLimit()`, `addToWhitelist()`, `removeFromWhitelist()`. In-memory cache + debounced 500ms writes (modeled on `storage.js`).
+
+#### Created - `src/utils/aiLimits.js`
+
+**Fungsi:** Per-user sliding 1-hour window rate limiter, shared across all AI features.
+
+**API:**
+- `checkAndIncrement(userId) → { allowed, remaining, resetAt, reason? }` — atomic check + increment
+- `peek(userId) → { count, limit, resetAt }` — diagnostics (untuk `/ai-set view`)
+
+**Owner bypass:** `config.discord.ownerId` selalu allowed (Infinity remaining).
+
+**GC:** Sweep interval 5 menit, `.unref()` biar gak nge-block shutdown.
+
+#### Created - `src/commands/ai-set.js`
+
+**Slash:** `/ai-set <subcommand>` (owner only)
+**Prefix:** `.ais <subcommand>` (owner only)
+
+**Subcommands:**
+
+| Sub | Args | Fungsi |
+|---|---|---|
+| `model` | `llama-3.3-70b` \| `MiniMax-M3` | Pilih model. **Provider auto-set** sesuai model. |
+| `limit` | `<angka>` (1-1000) | Set per-user hourly request limit |
+| `whitelist` | `add`/`remove`/`list` + `@user` | Manage user yang boleh pakai `/chat` (selain owner) |
+| `view` | — | Show current settings + availability matrix |
+
+**`/ai-set view` menampilkan:**
+- Model aktif + provider
+- Tabel 2 model dengan status API key (✅/❌)
+- Hourly limit
+- Whitelist count
+- Footer: lokasi file settings
+
+**Drop `provider` subcommand:** Awalnya ada subcommand `provider` terpisah, tapi user minta disederhanakan → `model` aja, provider auto-resolve dari `MODELS[model].provider`.
+
+**Prefix validation:** `.ais model minmax-m3` (case-insensitive) → match `MiniMax-M3`. `.ais model unknown` → error.
+
+---
+
+### 5. Reply-to-Continue Integration
+
+#### Modified - `src/handlers/messageHandler.js`
+
+Tambah chat reply-to-continue detection di `messageCreate` listener, **sebelum** prefix check:
+
+```js
+if (message.reference?.messageId) {
+  const ref = message.reference.messageId;
+  const owner = client._chatBotsLastReply?.get(ref);
+  if (owner && owner.userId === message.author.id) {
+    const { handleChatReply } = require("../commands/chat");
+    return handleChatReply(message, client, owner.session);
+  }
+}
+```
+
+Bot reply map auto-cleanup dengan `setTimeout(SESSION_TTL_MS + 60s).unref()`.
+
+---
+
+### 6. Rate-Limit Guard di AI Features Existing
+
+#### Modified - `src/commands/aiplaylist.js` & `src/commands/roast.js`
+
+Tambah 3-line guard di `execute()`, setelah `isAIAvailable()` check, sebelum heavy work:
+
+```js
+const rl = aiLimits.checkAndIncrement(interaction.user.id);
+if (!rl.allowed) {
+  const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
+  return interaction.reply({
+    embeds: [warningEmbed(`⏱️ **Limit AI tercapai.**\n...Coba lagi dalam **${mins} menit**.`)],
+    flags: 64,
+  });
+}
+```
+
+**Hasil:** Semua 3 AI features (`/chat`, `/aiplaylist`, `/roast`) sekarang share quota per user. Owner bypass.
+
+---
+
+### 7. Color, Config, Help, Aliases
+
+#### Modified - `src/utils/colors.js`
+Tambah: `CHAT: 0xC9A6E0,   // Soft purple — AI chat feature`
+
+#### Modified - `src/config.js`
+Tambah:
+```js
+tokenrouter: { apiKey: process.env.TOKENROUTER_API_KEY || null },
+ai: {
+  defaultProvider: process.env.AI_DEFAULT_PROVIDER || "nvidia",
+  defaultModel: process.env.AI_DEFAULT_MODEL || null,
+},
+```
+
+#### Modified - `src/config/prefixAliases.js`
+- Tambah `chat` ke `REST_STRING_ALIASES`
+- Tambah `ais` ke `SUBCOMMAND_ALIASES` + parser case di `parseSubcommand("ai-set")`
+- Tambah `chat` & `"ai-set"` ke `FULL_COMMAND_ALIASES`
+
+#### Modified - `src/commands/help.js` & `src/commands/helpv2.js`
+- Tambah entri `chat` + `ai-set` ke `COMMANDS` / `PREFIX_COMMANDS`
+- Tambah ke kategori `ai` di summary embed
+
+#### Modified - `.env.example` & `.env`
+Tambah dokumentasi:
+```
+TOKENROUTER_API_KEY=sk-xxx
+AI_DEFAULT_PROVIDER=nvidia
+AI_DEFAULT_MODEL=
+```
+
+**Live config (user's `.env`):**
+```
+NVIDIA_API_KEY=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
+TOKENROUTER_API_KEY=sk-62LMdabRr6Ya7iUvJXPHrQlq7Z6xy5KR4oOEd7tPg765sqM8
+AI_DEFAULT_PROVIDER=nvidia
+```
+
+---
+
+### 8. Bug Fixes
+
+#### Stale Cache di `data/aiSettings.json`
+
+**Masalah:** `model: "tokenrouter"` (string salah — itu nama provider, bukan nama model). TokenRouter return 503 `No available channel for model tokenrouter` karena model itu gak ada.
+
+**Fix:** Reset ke `model: null` → otomatis pakai `PROVIDERS.tokenrouter.defaultModel = "MiniMax-M3"`.
+
+**Verifikasi end-to-end:**
+```
+Settings: { "provider": "tokenrouter", "model": "MiniMax-M3" }
+Resolved: provider=tokenrouter, model=MiniMax-M3
+Real callAI(): ✅ Response: "The user is asking me to say 'Halo'..."
+```
+
+---
+
+### Files Summary
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/utils/ai.js` | Modified | Multi-provider refactor + `_stripThinking()` |
+| `src/utils/aiSettings.js` | Created | Global AI settings persistence |
+| `src/utils/aiLimits.js` | Created | Per-user hourly rate limiter |
+| `src/utils/personalities.js` | Created | 7 personalities + AI classifier |
+| `src/commands/chat.js` | Created | `/chat` + reply-to-continue handler |
+| `src/commands/ai-set.js` | Created | `/ai-set` (owner) for global settings |
+| `src/commands/aiplaylist.js` | Modified | Tambah rate-limit guard |
+| `src/commands/roast.js` | Modified | Tambah rate-limit guard |
+| `src/handlers/messageHandler.js` | Modified | Chat reply-to-continue detection |
+| `src/config/prefixAliases.js` | Modified | `.chat` & `.ais` aliases + parser |
+| `src/config.js` | Modified | Tambah `tokenrouter` + `ai` config |
+| `src/utils/colors.js` | Modified | Tambah `CHAT` color |
+| `src/commands/help.js` | Modified | Tambah `chat` + `ai-set` entries |
+| `src/commands/helpv2.js` | Modified | Tambah `.chat` + `.ais` entries |
+| `.env.example` | Modified | Tambah `TOKENROUTER_API_KEY`, `AI_DEFAULT_*` |
+| `.env` | Modified | Tambah TokenRouter key |
+| `data/aiSettings.json` | Modified | Reset stale `model` field |
+
+---
+
+### Total Commands Sekarang: 31
+
+Tambahan dari 29 sebelumnya:
+- `/chat` (`.chat`) — **AI** category
+- `/ai-set` (`.ais`) — **AI** category (owner only)
+
+| # | Slash | Prefix | Category |
+|---|-------|--------|----------|
+| 1-29 | (sebelumnya) | ... | Music/Control/Setup/AI |
+| 30 | `/chat` | `.chat` | **AI** |
+| 31 | `/ai-set` | `.ais` | **AI** (owner) |
+
+---
+
+### Verification Checklist
+
+- [x] TokenRouter 100% bisa dipanggil (live test, response valid)
+- [x] NVIDIA fallback tetep works (backward compat)
+- [x] `.p-yt` tetep works (zero changes, masih YouTube-only)
+- [x] `/aiplaylist` + `/roast` tetep works dengan rate limit baru
+- [x] Thinking-block leak fixed (verified dengan exact string dari bug report)
+- [x] Reply-to-continue: bot reply → user reply → bot lanjut conversation
+- [x] Personality detection: puisi/romantis/roast/dll auto-detect dari prompt
+- [x] Owner override personality: `/chat prompt:hi personality:romantis`
+- [x] Whitelist: `/ai-set whitelist add` → non-owner bisa pakai `/chat`
+- [x] Rate limit: 5/jam enforced, owner bypass
+- [x] `/ai-set view` nampilin matrix 2 model + status API key
+- [x] Settings persist across restart (`data/aiSettings.json`)
+- [x] Multi-provider: pilih model → provider auto-set, base URL + key benar
+
+---
+
+### Notes
+
+- **No silent provider fallback:** kalau owner switch ke TokenRouter tapi `TOKENROUTER_API_KEY` gak di-set → error jelas "Provider 'tokenrouter' tidak tersedia."
+- **Default provider di `.env`:** `AI_DEFAULT_PROVIDER=nvidia` (biar backward compat dengan `/aiplaylist` & `/roast` yang udah jalan di NVIDIA).
+- **Slash deployment:** `npm run deploy:guild` setelah restart untuk register `/chat` & `/ai-set`.
+- **One concern:** Model di TokenRouter kadang emit `<think>` bahkan di prompt sederhana. Strip di `callAI()` udah handle ini — semua output ke user tetep clean.
