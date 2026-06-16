@@ -6,9 +6,17 @@
  *   - timeout / connection error
  *   - EMPTY_RESPONSE
  *
- * NOT retried: 401/403 (bad API key), 429 (rate limit), validation errors.
+ * NOT retried: 401/403 (bad API key), 429 (rate limit), 404 (model not found),
+ * 4xx validation errors.
  *
- * Capped at 1 fallback per call (no chains) to prevent latency blowup.
+ * Behavior on retriable primary error:
+ *   1. Retry primary call up to MAX_PRIMARY_RETRIES times (handles transient
+ *      blips like empty response from tokenrouter).
+ *   2. If still failing, fall back to alternative provider.
+ *   3. On fallback, SWAP the model if the original model is not available on
+ *      the fallback provider (use fallback provider's default model). This
+ *      prevents "model not found" 404s on the fallback provider.
+ *
  * Toggleable via aiSettings.fallbackEnabled (default true).
  *
  * API:
@@ -23,7 +31,14 @@
  *   - src/utils/personalities.js (classifier)
  */
 
-const { callAI, isProviderAvailable, getDefaultProviderName } = require("./ai");
+const {
+  callAI,
+  isProviderAvailable,
+  getDefaultProviderName,
+  getDefaultModel,
+  isModelAvailableOnProvider,
+  getModelsForProvider,
+} = require("./ai");
 const { getAISettings } = require("./aiSettings");
 const { makeLogger } = require("./logger");
 const { config } = require("../config");
@@ -36,6 +51,7 @@ function isFallbackEnabled() {
 }
 
 function isRetriableError(err) {
+  if (!err) return false;
   const msg = err?.message || "";
   const status = err?.status || err?.response?.status;
   // 5xx server errors
@@ -66,6 +82,37 @@ function getFallbackProvider(currentProvider) {
 }
 
 /**
+ * Decide which model to use on the fallback provider.
+ *
+ * Rules:
+ *   - If original model is registered for the fallback provider, keep it.
+ *   - If not, use the fallback provider's default model.
+ *   - If no default model is configured for fallback, return null (caller
+ *     will surface "model not set" error from callAI).
+ *
+ * @param {string} fallbackProvider
+ * @param {string} originalModel
+ * @returns {string|null}
+ */
+function resolveFallbackModel(fallbackProvider, originalModel) {
+  if (!fallbackProvider) return null;
+  if (originalModel && isModelAvailableOnProvider(fallbackProvider, originalModel)) {
+    return originalModel;
+  }
+  // Fallback model not registered on this provider — use its default
+  const def = getDefaultModel(fallbackProvider);
+  if (def) {
+    const available = getModelsForProvider(fallbackProvider);
+    if (available.length === 0 || available.includes(def)) {
+      return def;
+    }
+    // Default model itself not registered — pick first available
+    return available[0] || def;
+  }
+  return def || null;
+}
+
+/**
  * Call AI with optional fallback to alternative provider.
  * @param {Object} opts - same as callAI()
  * @returns {Promise<string>}
@@ -78,33 +125,74 @@ async function callAIWithFallback(opts = {}) {
 
   const currentProvider = opts.provider || getDefaultProviderName();
 
-  try {
-    return await callAI(opts);
-  } catch (err) {
-    if (!isRetriableError(err)) throw err;
+  // === Phase 1: Retry primary for transient errors ===
+  // 1 initial attempt + 1 retry = 2 attempts max on primary.
+  const MAX_PRIMARY_RETRIES = 1;
+  const RETRY_DELAY_MS = 500;
 
-    const fallback = getFallbackProvider(currentProvider);
-    if (!fallback) {
-      log.warn(`[AI] No fallback provider available (current=${currentProvider})`);
-      throw err;
-    }
-
-    log.warn(
-      `[AI] Primary ${currentProvider} failed (${err.message || err}), trying fallback ${fallback}`
-    );
-
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_PRIMARY_RETRIES + 1; attempt++) {
     try {
-      const result = await callAI({ ...opts, provider: fallback });
-      log.info(`[AI] Fallback ${fallback} succeeded`);
-      return result;
-    } catch (fbErr) {
-      log.error(
-        `[AI] Fallback ${fallback} also failed:`,
-        fbErr?.message || fbErr
-      );
-      // Throw original error (more user-friendly context)
-      throw err;
+      return await callAI(opts);
+    } catch (err) {
+      lastErr = err;
+      if (!isRetriableError(err)) {
+        // Non-retriable (e.g. 404 model not found, 401 bad key, 429 rate limit):
+        // skip remaining retries, but still try fallback below — fallback may
+        // have a working model on a different provider, fixing 404 issues.
+        log.warn(
+          `[AI] Primary ${currentProvider} got non-retriable error (${err.message || err}), trying fallback...`
+        );
+        break;
+      }
+      if (attempt <= MAX_PRIMARY_RETRIES) {
+        log.warn(
+          `[AI] Primary ${currentProvider} attempt ${attempt} failed (${err.message || err}), retrying in ${RETRY_DELAY_MS}ms...`
+        );
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      // Exhausted primary retries — fall through to fallback
+      break;
     }
+  }
+
+  // === Phase 2: Fallback to alternative provider ===
+  const fallback = getFallbackProvider(currentProvider);
+  if (!fallback) {
+    log.warn(`[AI] No fallback provider available (current=${currentProvider})`);
+    throw lastErr;
+  }
+
+  // Smart model swap: if original model is not on fallback provider, use
+  // fallback provider's default. Prevents 404 "model not found" when
+  // primary was tokenrouter/MiniMax-M3 and fallback is nvidia (which has
+  // no M3 model).
+  const swapModel = resolveFallbackModel(fallback, opts.model);
+  const swapProvider = fallback;
+  const swapNote = swapModel !== opts.model
+    ? ` (swapped model: ${opts.model} -> ${swapModel})`
+    : "";
+
+  log.warn(
+    `[AI] Primary ${currentProvider} failed after retries (${lastErr?.message || lastErr}), trying fallback ${swapProvider}${swapNote}`
+  );
+
+  try {
+    const result = await callAI({
+      ...opts,
+      provider: swapProvider,
+      model: swapModel,
+    });
+    log.info(`[AI] Fallback ${swapProvider}/${swapModel} succeeded`);
+    return result;
+  } catch (fbErr) {
+    log.error(
+      `[AI] Fallback ${swapProvider}/${swapModel} also failed:`,
+      fbErr?.message || fbErr
+    );
+    // Throw original error (more user-friendly context)
+    throw lastErr;
   }
 }
 
@@ -113,4 +201,5 @@ module.exports = {
   isFallbackEnabled,
   isRetriableError,
   getFallbackProvider,
+  resolveFallbackModel,
 };

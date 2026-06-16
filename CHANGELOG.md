@@ -44,6 +44,31 @@ dan project ini menggunakan versioning semantik.
 
 ## [Unreleased]
 
+### Fixed - Smart Fallback Model Swap + Primary Retry
+
+**Bug:** Saat primary `tokenrouter/MiniMax-M3` gagal (empty/5xx), fallback ke `nvidia` masih bawa model `MiniMax-M3` — yang mana model itu **gak ada di nvidia** → 404 page not found. User tetep dapet response karena `aiProviderFallback.js` throw err original (yang friendly), tapi underlying issue gak ke-address.
+
+#### Changed
+
+- **`src/utils/aiProviderFallback.js`**:
+  - **Smart model swap** — kalau model di primary gak ada di fallback provider, otomatis di-swap ke default model fallback. Misal `tokenrouter/MiniMax-M3` → fallback `nvidia` → swap ke `llama-3.3-70b`. Prevents 404 chain.
+  - **Primary retry** — 1 retry (500ms delay) untuk transient errors (empty response, 5xx, timeout) sebelum fallback. Ngurangin false-fallback yang sebenernya solvable dengan retry.
+  - **Non-retriable still tries fallback** — 404 (model not found), 429 (rate limit), 401/403 (bad key) gak di-retry, TAPI tetep di-fallback. 404 specifically sering ke-fix sama model swap.
+
+- **`src/utils/ai.js`**:
+  - **`MODELS_BY_PROVIDER`** — auto-derived map (provider → [modelKey, ...]) dari existing `MODELS` constant. Tambah model baru → otomatis registered. Ready untuk multi-model per provider (misal `tokenrouter: M3, Claude Sonnet, Qwen`).
+  - **`getModelsForProvider(provider)`** — get all model keys for a provider.
+  - **`isModelAvailableOnProvider(provider, model)`** — check if a model is registered on a provider. Used by fallback swap logic.
+  - **Improved 404 error** — `status === 404` sekarang throw message yang actionable: "Model `MiniMax-M3` gak ada di provider `nvidia`. Model yang tersedia di `nvidia`: llama-3.3-70b. Coba `/ai-set model <nama>` atau pastikan nama model bener." Gak ada lagi pesan generic yang bingungin.
+
+#### Future-proofing
+
+- `MODELS_BY_PROVIDER` derived dari `MODELS` jadi nambah model baru (e.g. `claude-sonnet` di `tokenrouter`) auto-handled sama fallback swap. Owner tinggal add entry di `MODELS` di `ai.js`.
+
+---
+
+## [Unreleased]
+
 ### Changed - Chat Embed Cleanup (Phase E)
 
 #### Removed
