@@ -65,6 +65,35 @@ dan project ini menggunakan versioning semantik.
 
 - `MODELS_BY_PROVIDER` derived dari `MODELS` jadi nambah model baru (e.g. `claude-sonnet` di `tokenrouter`) auto-handled sama fallback swap. Owner tinggal add entry di `MODELS` di `ai.js`.
 
+#### Fixed - Model name resolution (apiName vs key)
+
+**Bug:** `MODELS` punya key user-facing (`llama-3.3-70b`) yang berbeda dari nama model di API (`meta/llama-3.3-70b-instruct`). Sebelumnya `callAI` kirim **key** ke API, jadi waktu fallback `tokenrouter/MiniMax-M3` → `nvidia`, nvidia dapet `llama-3.3-70b` (key) bukan `meta/llama-3.3-70b-instruct` (apiName) → **404 page not found**.
+
+**Fix di `src/utils/ai.js`:**
+- Tambah `apiName` field ke setiap entry di `MODELS`. Contoh:
+  ```js
+  "llama-3.3-70b": {
+    provider: "nvidia",
+    apiName: "meta/llama-3.3-70b-instruct",  // ← nama yang dikirim ke API
+    label: "Llama 3.3 70B",
+    ...
+  }
+  ```
+- Tambah `resolveApiName(model)` helper — kalau `model` adalah key di `MODELS`, return `apiName`. Kalau bukan, passthrough (untuk backward compat).
+- `_resolveCall` sekarang manggil `resolveApiName()` sebelum return, jadi `callAI` selalu kirim **apiName** yang valid ke provider API.
+- Token usage tracking tetap pakai **key** user-facing (bukan apiName) supaya `/ai-set view` clean — owner liat "llama-3.3-70b" bukan "meta/llama-3.3-70b-instruct".
+
+**Future-proofing:** Saat owner nambah model baru, tinggal specify `apiName` di `MODELS`. Misal `claude-sonnet`:
+```js
+"claude-sonnet": {
+  provider: "tokenrouter",
+  apiName: "anthropic/claude-3-5-sonnet",
+  label: "Claude Sonnet",
+  ...
+}
+```
+Key user-facing tetap `claude-sonnet`, tapi API dapat `anthropic/claude-3-5-sonnet`.
+
 ---
 
 ## [Unreleased]
