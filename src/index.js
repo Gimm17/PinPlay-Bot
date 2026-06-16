@@ -43,6 +43,14 @@ client.once("clientReady", async () => {
     activities: [{ name: "music | /play", type: ActivityType.Listening }],
     status: "online",
   });
+
+  // Pre-warm AI provider clients (faster first /chat, /roast, /aiplaylist)
+  try {
+    const { prewarmAll } = require("./utils/ai");
+    await prewarmAll();
+  } catch (e) {
+    log.warn("AI prewarm failed:", e?.message || e);
+  }
 });
 
 // --- Lavalink node events (debug)
