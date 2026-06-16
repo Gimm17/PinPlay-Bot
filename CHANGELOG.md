@@ -94,6 +94,20 @@ dan project ini menggunakan versioning semantik.
 ```
 Key user-facing tetap `claude-sonnet`, tapi API dapat `anthropic/claude-3-5-sonnet`.
 
+#### Fixed - Misleading ERROR log on successful retry
+
+**Bug:** Kalau primary `callAI` throw retriable error (empty/5xx/timeout), log `ERROR` dicetak di `ai.js:300`. Tapi `callAIWithFallback` di retry dan **recovery sukses** → user tetap dapet response dengan benar. Hasilnya: log penuh ERROR merah yang misleading, seolah-olah ada failure padahal gak ada.
+
+**Fix di `src/utils/ai.js`:**
+- Ganti `log.error` jadi `log.warn` di catch handler `callAI`. Caller (`callAIWithFallback`) sekarang yang punya context penuh — dia log `WARN` saat retry attempt, dan `INFO` saat fallback/retry sukses. Kalau bener-bener exhausted, `ERROR` dicetak di `aiProviderFallback.js` (final failure).
+- Alur log jadi clean:
+  - `WARN`: primary attempt failed, retrying... (dari aiProviderFallback)
+  - `WARN`: AI call error [...] (dari ai.js — transient error, recovered by retry/fallback)
+  - `INFO`: Fallback nvidia/llama-3.3-70b succeeded (recovery)
+  - `ERROR`: cuma kalau semua attempts gagal total (final failure)
+
+User gak akan lihat ERROR merah lagi untuk chat yang sukses. Kalau ada ERROR, itu bener-bener berarti user juga gagal.
+
 ---
 
 ## [Unreleased]

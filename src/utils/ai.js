@@ -301,7 +301,11 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
 
     return cleaned;
   } catch (err) {
-    log.error(
+    // Log at WARN (not ERROR) because callers may retry / fallback and
+    // recover — an error here doesn't always mean the user sees a failure.
+    // The caller (callAIWithFallback) logs the final outcome at the right
+    // level after retries/fallback are exhausted.
+    log.warn(
       `AI call error [${providerName}/${resolvedModel}] (status=${err?.status || err?.response?.status || "?"}):`,
       err?.message || err
     );
