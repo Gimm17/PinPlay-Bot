@@ -1,6 +1,11 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { getPlayer, getCurrentTrack } = require("../utils/player");
-const { callAI, isAIAvailable } = require("../utils/ai");
+const { isAIAvailable } = require("../utils/ai");
+const { callAIWithFallback } = require("../utils/aiProviderFallback");
+const aiLimits = require("../utils/aiLimits");
+const aiPromptCache = require("../utils/aiPromptCache");
+const aiMemory = require("../utils/aiMemory");
+const { warningEmbed } = require("../utils/embeds");
 const { config } = require("../config");
 const { makeLogger } = require("../utils/logger");
 
@@ -76,12 +81,23 @@ module.exports = {
       });
     }
 
+    // === Rate limit check (shared across all AI features) ===
+    const rl = aiLimits.checkAndIncrement(interaction.user.id);
+    if (!rl.allowed) {
+      const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
+      return interaction.reply({
+        embeds: [warningEmbed(`⏱️ **Limit AI tercapai.**\nKamu sudah pakai maksimal request dalam 1 jam terakhir.\nCoba lagi dalam **${mins} menit**.`)],
+        flags: 64,
+      });
+    }
+
     try {
       await interaction.deferReply();
     } catch {
       return;
     }
 
+    // Pre-fetch current track info in parallel with the placeholder update
     const player = getPlayer(client, interaction.guildId);
     const current = getCurrentTrack(player);
 
@@ -90,10 +106,21 @@ module.exports = {
       if (!current) {
         const userName = getRequesterName(interaction.member || interaction.user);
 
+        // Cache key for no-song roast
+        const cacheKey = aiPromptCache._hashKey(`no-song:${userName}`, "roast", "no-song");
+        const cached = aiPromptCache.get(interaction.user.id, cacheKey);
+        if (cached) {
+          // Cache hit: just send it directly, no extra AI call (still counts toward rate limit)
+          await interaction.editReply("Roast...");
+          await interaction.followUp(`<@${interaction.user.id}> ${cached}`.trim().slice(0, 1950));
+          if (interaction.deleteReply) await interaction.deleteReply();
+          return;
+        }
+
         // Update placeholder jadi "Roast..." (1 status aja)
         await interaction.editReply("Roast...");
 
-        const roast = await callAI({
+        const roast = await callAIWithFallback({
           messages: [
             { role: "system", content: NO_SONG_SYSTEM_PROMPT },
             {
@@ -104,6 +131,9 @@ module.exports = {
           temperature: 0.9,
           maxTokens: 512,
         });
+
+        // Cache for 1h
+        aiPromptCache.set(interaction.user.id, cacheKey, roast);
 
         // Kirim roast di chat baru, lalu hapus status "Roast..."
         await interaction.followUp(roast.slice(0, 1900));
@@ -117,6 +147,26 @@ module.exports = {
       const requester = current.requester;
       const requesterName = getRequesterName(requester);
 
+      // Cache key: per-(user, track) to allow different users to roast same track
+      const userMemCtx = aiMemory.isMemoryEnabled()
+        ? aiMemory.formatUserForPrompt(interaction.user.id)
+        : "";
+      const cacheKey = aiPromptCache._hashKey(
+        `${title}::${artist}::${requesterName}`,
+        "roast",
+        userMemCtx
+      );
+      const cached = aiPromptCache.get(interaction.user.id, cacheKey);
+      if (cached) {
+        // Cache hit
+        await interaction.editReply("Roast...");
+        const mention = requester?.id ? `<@${requester.id}> ` : "";
+        const text = `${mention}${cached}`.trim();
+        await interaction.followUp(text.slice(0, 1950));
+        if (interaction.deleteReply) await interaction.deleteReply();
+        return;
+      }
+
       // Update placeholder jadi "Roast..." (1 status aja)
       await interaction.editReply("Roast...");
 
@@ -127,10 +177,11 @@ module.exports = {
         `Lagu yang lagi diputar:\n` +
         `Judul: ${title}\n` +
         `Artis: ${artist}\n` +
-        `Yang request: ${requesterName}`;
+        `Yang request: ${requesterName}` +
+        (userMemCtx ? `\n\n--- KONTEKS USER (untuk personalize) ---\n${userMemCtx}` : "");
 
       // Mulai AI call dengan info dasar (tanpa lyrics dulu)
-      const roastPromise = callAI({
+      const roastPromise = callAIWithFallback({
         messages: [
           { role: "system", content: ROAST_SYSTEM_PROMPT },
           { role: "user", content: baseUserContent },
@@ -145,9 +196,8 @@ module.exports = {
         roastPromise,
       ]);
 
-      // Kalau AI gagal pakai info dasar, coba ulang dengan lyrics
-      // (skenario jarang — biasanya AI sudah cukup dari judul+artis)
-      // Untuk speed, langsung pakai hasil AI
+      // Cache for 1h
+      aiPromptCache.set(interaction.user.id, cacheKey, roast);
 
       // Ping requester biar kena notif, lalu roast-nya di chat baru
       const mention = requester?.id ? `<@${requester.id}> ` : "";

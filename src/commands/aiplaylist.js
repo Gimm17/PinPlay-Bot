@@ -5,18 +5,21 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const { randomUUID } = require("crypto");
 const { config } = require("../config");
 const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const { getPlayer } = require("../utils/player");
 const { Colors } = require("../utils/colors");
 const { callAI, isAIAvailable } = require("../utils/ai");
-const { errorEmbed, infoEmbed } = require("../utils/embeds");
+const { callAIWithFallback } = require("../utils/aiProviderFallback");
+const aiLimits = require("../utils/aiLimits");
+const { errorEmbed, infoEmbed, warningEmbed } = require("../utils/embeds");
 const { makeLogger } = require("../utils/logger");
 
 const log = makeLogger(config.logLevel);
 
 const CACHE_TTL_MS = 120_000;
-const SEARCH_CONCURRENCY = 5;
+const SEARCH_CONCURRENCY = 8;
 
 const PLAYLIST_SYSTEM_PROMPT = `Kamu adalah AI music curator yang jago banget soal musik Indonesia maupun internasional. User bakal minta playlist berdasarkan mood, tema, genre, atau situasi tertentu.
 
@@ -160,10 +163,10 @@ function _buildButtons(cacheKey, disabled = false) {
 async function _generateAndShow(interaction, client, query, user, vc) {
   await interaction.editReply("🤖 AI lagi nyusun playlist buat kamu...").catch(() => null);
 
-  // 1. Panggil AI
+  // 1. Panggil AI (with provider fallback)
   let aiText;
   try {
-    aiText = await callAI({
+    aiText = await callAIWithFallback({
       messages: [
         { role: "system", content: PLAYLIST_SYSTEM_PROMPT },
         { role: "user", content: `Buatkan playlist: ${query}. Kasih 10-15 lagu.` },
@@ -203,8 +206,8 @@ async function _generateAndShow(interaction, client, query, user, vc) {
       .catch(() => null);
   }
 
-  // 4. Cache hasil
-  const cacheKey = `${user.id}:${interaction.guildId}:${interaction.id || interaction.channelId}`;
+  // 4. Cache hasil — use randomUUID to avoid any theoretical ID clash
+  const cacheKey = randomUUID();
   if (!client._aiPlaylistCache) client._aiPlaylistCache = new Map();
 
   client._aiPlaylistCache.set(cacheKey, {
@@ -245,6 +248,16 @@ module.exports = {
     if (!isAIAvailable()) {
       return interaction.reply({
         embeds: [errorEmbed("❌ Fitur AI belum diaktifkan. Admin perlu set `NVIDIA_API_KEY` di `.env`.")],
+        flags: 64,
+      });
+    }
+
+    // === Rate limit check (shared across all AI features) ===
+    const rl = aiLimits.checkAndIncrement(interaction.user.id);
+    if (!rl.allowed) {
+      const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
+      return interaction.reply({
+        embeds: [warningEmbed(`⏱️ **Limit AI tercapai.**\nKamu sudah pakai maksimal request dalam 1 jam terakhir.\nCoba lagi dalam **${mins} menit**.`)],
         flags: 64,
       });
     }
