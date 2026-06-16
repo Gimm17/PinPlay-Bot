@@ -130,6 +130,7 @@ module.exports = {
           ],
           temperature: 0.9,
           maxTokens: 512,
+          _source: "roast",
         });
 
         // Cache for 1h
@@ -188,6 +189,7 @@ module.exports = {
         ],
         temperature: 0.9,
         maxTokens: 300,
+        _source: "roast",
       });
 
       // Tunggu keduanya selesai

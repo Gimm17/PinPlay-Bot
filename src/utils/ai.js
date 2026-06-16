@@ -24,6 +24,7 @@
 const OpenAI = require("openai");
 const { config } = require("../config");
 const { getAISettings } = require("./aiSettings");
+const aiTokenUsage = require("./aiTokenUsage");
 const { makeLogger } = require("./logger");
 
 const log = makeLogger(config.logLevel);
@@ -198,7 +199,7 @@ function _resolveCall({ provider, model }) {
  * @param {string} [opts.model]    - override default model
  * @returns {Promise<string>} teks respons dari assistant
  */
-async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider, model }) {
+async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider, model, _source }) {
   const { providerName, resolvedModel } = _resolveCall({ provider, model });
   const client = _getClient(providerName);
 
@@ -220,6 +221,21 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
     if (!cleaned) {
       throw new Error("EMPTY_RESPONSE");
     }
+
+    // Capture token usage (silent on failure — never break user flow)
+    if (completion?.usage) {
+      try {
+        aiTokenUsage.recordUsage({
+          provider: providerName,
+          model: resolvedModel,
+          source: _source || "unknown",
+          usage: completion.usage,
+        });
+      } catch (e) {
+        log.debug("recordUsage failed:", e?.message || e);
+      }
+    }
+
     return cleaned;
   } catch (err) {
     log.error(

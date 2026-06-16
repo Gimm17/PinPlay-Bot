@@ -18,6 +18,7 @@
  *     fallbackEnabled: boolean,                     // auto-fallback to other provider on 5xx (default true)
  *     memoryEnabled: boolean,                       // AI memory system on/off (default true)
  *     personality: string | null,                   // owner-only default forced personality
+ *     costPerMillion: { [modelKey]: number },       // USD per 1M tokens, configurable pricing for token monitoring
  *   }
  *
  * Dipakai oleh:
@@ -31,6 +32,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { atomicWriteJsonSync, readJsonSafeSync } = require("./jsonFile");
 
 const dataDir = path.join(process.cwd(), "data");
 const file = path.join(dataDir, "aiSettings.json");
@@ -51,6 +53,7 @@ const DEFAULTS = {
   fallbackEnabled: true,
   memoryEnabled: true,
   personality: null,
+  costPerMillion: {},
 };
 
 function ensure() {
@@ -65,26 +68,25 @@ function ensure() {
 function _loadCache() {
   if (_cache !== null) return;
   ensure();
-  try {
-    const raw = fs.readFileSync(file, "utf-8");
-    const parsed = JSON.parse(raw || "{}");
-    _cache = { ...DEFAULTS, ...parsed };
-    // Normalize whitelist to array
-    if (!Array.isArray(_cache.whitelist)) {
-      _cache.whitelist = [];
-    }
-    // Normalize userLimits / userBonuses to object
-    if (typeof _cache.userLimits !== "object" || _cache.userLimits === null || Array.isArray(_cache.userLimits)) {
-      _cache.userLimits = {};
-    }
-    if (typeof _cache.userBonuses !== "object" || _cache.userBonuses === null || Array.isArray(_cache.userBonuses)) {
-      _cache.userBonuses = {};
-    }
-    if (typeof _cache.globalNotes !== "string") {
-      _cache.globalNotes = "";
-    }
-  } catch {
-    _cache = { ...DEFAULTS };
+  const parsed = readJsonSafeSync(file, {});
+  _cache = { ...DEFAULTS, ...parsed };
+  // Normalize whitelist to array
+  if (!Array.isArray(_cache.whitelist)) {
+    _cache.whitelist = [];
+  }
+  // Normalize userLimits / userBonuses to object
+  if (typeof _cache.userLimits !== "object" || _cache.userLimits === null || Array.isArray(_cache.userLimits)) {
+    _cache.userLimits = {};
+  }
+  if (typeof _cache.userBonuses !== "object" || _cache.userBonuses === null || Array.isArray(_cache.userBonuses)) {
+    _cache.userBonuses = {};
+  }
+  if (typeof _cache.globalNotes !== "string") {
+    _cache.globalNotes = "";
+  }
+  // Normalize costPerMillion to object
+  if (typeof _cache.costPerMillion !== "object" || _cache.costPerMillion === null || Array.isArray(_cache.costPerMillion)) {
+    _cache.costPerMillion = {};
   }
 }
 
@@ -93,8 +95,7 @@ function _scheduleSave() {
   _writeTimer = setTimeout(() => {
     _writeTimer = null;
     try {
-      ensure();
-      fs.writeFileSync(file, JSON.stringify(_cache, null, 2), "utf-8");
+      atomicWriteJsonSync(file, _cache);
     } catch (e) {
       console.error("[WARN] Failed to persist aiSettings:", e?.message || e);
     }
@@ -230,6 +231,42 @@ function setDefaultPersonality(name) {
   return _cache;
 }
 
+// === Cost per million tokens (for token monitoring) ===
+
+function getCostPerMillion(modelKey) {
+  _loadCache();
+  if (!modelKey) return 0;
+  const v = Number(_cache.costPerMillion?.[modelKey]);
+  return Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+function setCostPerMillion(modelKey, value) {
+  if (!modelKey) throw new Error("modelKey required");
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) {
+    throw new Error("Cost must be a non-negative number");
+  }
+  _loadCache();
+  _cache.costPerMillion[modelKey] = num;
+  _scheduleSave();
+  return _cache;
+}
+
+function removeCostPerMillion(modelKey) {
+  if (!modelKey) return _cache;
+  _loadCache();
+  if (_cache.costPerMillion[modelKey] !== undefined) {
+    delete _cache.costPerMillion[modelKey];
+    _scheduleSave();
+  }
+  return _cache;
+}
+
+function listCostPerMillion() {
+  _loadCache();
+  return { ..._cache.costPerMillion };
+}
+
 module.exports = {
   getAISettings,
   setAISettings,
@@ -246,5 +283,9 @@ module.exports = {
   setFallbackEnabled,
   setMemoryEnabled,
   setDefaultPersonality,
+  getCostPerMillion,
+  setCostPerMillion,
+  removeCostPerMillion,
+  listCostPerMillion,
   DEFAULTS,
 };

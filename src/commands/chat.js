@@ -159,7 +159,7 @@ async function _runChat({
   // Call AI (with provider fallback)
   let reply;
   try {
-    reply = await callAIWithFallback({ messages, temperature: 0.7, maxTokens: 1024 });
+    reply = await callAIWithFallback({ messages, temperature: 0.7, maxTokens: 1024, _source: "chat" });
   } catch (err) {
     log.error(`Chat error [${source}] [user=${userId}]:`, err?.message || err);
     const embed = errorEmbed(`❌ ${err.message}`);

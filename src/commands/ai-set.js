@@ -24,6 +24,7 @@ const aiSettings = require("../utils/aiSettings");
 const aiLimits = require("../utils/aiLimits");
 const aiMemory = require("../utils/aiMemory");
 const aiPromptCache = require("../utils/aiPromptCache");
+const aiTokenUsage = require("../utils/aiTokenUsage");
 const {
   getAvailableProviders,
   getDefaultProviderName,
@@ -208,6 +209,29 @@ module.exports = {
       sc
         .setName("limits")
         .setDescription("Lihat status limit semua user yang lagi aktif (window 1 jam)")
+    )
+    .addSubcommand((sc) =>
+      sc
+        .setName("tokens")
+        .setDescription("Lihat/atur token usage tracking & cost")
+        .addStringOption((o) =>
+          o
+            .setName("action")
+            .setDescription("Aksi")
+            .setRequired(true)
+            .addChoices(
+              { name: "stats", value: "stats" },
+              { name: "reset", value: "reset" },
+              { name: "cost", value: "cost" },
+              { name: "costlist", value: "costlist" }
+            )
+        )
+        .addStringOption((o) =>
+          o.setName("modelkey").setDescription("Nama model (untuk cost)").setRequired(false)
+        )
+        .addNumberOption((o) =>
+          o.setName("value").setDescription("USD per 1M tokens (untuk cost)").setRequired(false)
+        )
     )
     .addSubcommand((sc) =>
       sc.setName("view").setDescription("Lihat setting saat ini")
@@ -621,6 +645,144 @@ module.exports = {
       return interaction.reply({ embeds: [embed], flags: 64 });
     }
 
+    // === tokens ===
+    if (sub === "tokens") {
+      const action = interaction.options.getString("action", true);
+      const modelKey = interaction.options.getString("modelkey");
+      const value = interaction.options.getNumber("value");
+
+      if (action === "reset") {
+        const before = aiTokenUsage.getStats();
+        const callsBefore = before.totals.calls;
+        aiTokenUsage.resetStats();
+        return interaction.reply({
+          embeds: [
+            successEmbed(
+              `✅ Token usage di-reset.\n${callsBefore} call(s) sebelumnya di-clear. \`startedAt\` dipertahankan.`
+            ),
+          ],
+          flags: 64,
+        });
+      }
+
+      if (action === "cost") {
+        if (!modelKey || value === null || value === undefined) {
+          return interaction.reply({
+            embeds: [
+              errorEmbed(
+                "❌ Specify model + value.\n" +
+                  "**Slash:** `/ai-set tokens cost modelkey:MiniMax-M3 value:0.15`\n" +
+                  "**Prefix:** `.ais tokens cost MiniMax-M3 0.15`"
+              ),
+            ],
+            flags: 64,
+          });
+        }
+        try {
+          aiSettings.setCostPerMillion(modelKey, value);
+          return interaction.reply({
+            embeds: [
+              successEmbed(
+                `✅ Cost diset: \`${modelKey}\` = **$${value}/1M tokens**`
+              ),
+            ],
+            flags: 64,
+          });
+        } catch (e) {
+          return interaction.reply({ embeds: [errorEmbed(`❌ ${e.message}`)], flags: 64 });
+        }
+      }
+
+      if (action === "costlist") {
+        const costs = aiSettings.listCostPerMillion();
+        const keys = Object.keys(costs);
+        if (!keys.length) {
+          return interaction.reply({
+            embeds: [infoEmbed("📊 Belum ada cost rate yang diset. Semua model = $0 (free).")],
+            flags: 64,
+          });
+        }
+        const lines = keys
+          .sort()
+          .map((k) => `• \`${k}\` = **$${costs[k]}/1M tokens**`)
+          .join("\n");
+        return interaction.reply({
+          embeds: [infoEmbed(`💰 **Cost rates:**\n${lines}`)],
+          flags: 64,
+        });
+      }
+
+      // action === "stats"
+      const stats = aiTokenUsage.getStats();
+      const providers = aiTokenUsage.getProviderBreakdown();
+      const sources = aiTokenUsage.getSourceBreakdown();
+      const models = aiTokenUsage.getModelBreakdown();
+      const estCost = aiTokenUsage.getEstimatedCost();
+
+      if (stats.totals.calls === 0) {
+        return interaction.reply({
+          embeds: [infoEmbed("📊 Belum ada token usage yang tercatat. Jalankan /chat, /roast, atau /aiplaylist dulu.")],
+          flags: 64,
+        });
+      }
+
+      // Build provider lines
+      const providerLines = providers
+        .filter((p) => p.calls > 0)
+        .map((p) => {
+          const avg = p.totalTokens > 0 ? Math.round(p.totalTokens / p.calls) : 0;
+          return `• \`${p.provider}\`: **${p.totalTokens.toLocaleString()}** tokens, **${p.calls}** call(s) (avg ${avg}/call)`;
+        })
+        .join("\n") || "_(none)_";
+
+      // Build source lines (top 5)
+      const sourceLines = sources
+        .filter((s) => s.calls > 0)
+        .slice(0, 5)
+        .map((s) => `• \`${s.source}\`: **${s.totalTokens.toLocaleString()}** tokens, **${s.calls}** call(s)`)
+        .join("\n") || "_(none)_";
+
+      // Build model lines (top 5)
+      const modelLines = models
+        .slice(0, 5)
+        .map((m) => `• \`${m.model}\`: **${m.totalTokens.toLocaleString()}** tokens, **${m.calls}** call(s)`)
+        .join("\n") || "_(none)_";
+
+      const embed = new EmbedBuilder()
+        .setColor(Colors.AI)
+        .setTitle("📊 Token Usage (All-time)")
+        .addFields(
+          {
+            name: "🌐 Global Totals",
+            value:
+              `• Total tokens: **${stats.totals.totalTokens.toLocaleString()}**\n` +
+              `• Prompt: **${stats.totals.promptTokens.toLocaleString()}** • Completion: **${stats.totals.completionTokens.toLocaleString()}**\n` +
+              `• API calls: **${stats.totals.calls}**\n` +
+              `• Est. cost: **$${estCost.toFixed(2)}**`,
+            inline: false,
+          },
+          {
+            name: "🛠️ Per-Provider",
+            value: providerLines,
+            inline: false,
+          },
+          {
+            name: "📦 Per-Source (top 5)",
+            value: sourceLines,
+            inline: false,
+          },
+          {
+            name: "🤖 Per-Model (top 5)",
+            value: modelLines,
+            inline: false,
+          }
+        )
+        .setFooter({
+          text: `Started: ${stats.startedAt?.slice(0, 19) || "?"} • Last: ${stats.lastUpdated?.slice(0, 19) || "?"} • Cache hits = 0 tokens (no API call)`,
+        });
+      return interaction.reply({ embeds: [embed], flags: 64 });
+    }
+
     // === view ===
     const s = aiSettings.getAISettings();
     const avail = getAvailableProviders();
@@ -631,6 +793,8 @@ module.exports = {
     const memEnabled = s.memoryEnabled !== false;
     const fallbackEnabled = s.fallbackEnabled !== false;
     const cacheStats = aiPromptCache.stats();
+    const tokenStats = aiTokenUsage.getStats();
+    const estCost = aiTokenUsage.getEstimatedCost();
 
     // Build per-model availability: show which models are usable
     const modelLines = MODEL_NAMES.map((name) => {
@@ -643,6 +807,11 @@ module.exports = {
     const overrideLines = overrides.length
       ? overrides.slice(0, 8).map((o) => `• <@${o.userId}> → **${o.effective}**/jam`).join("\n")
       : "_(tidak ada)_";
+
+    // Token usage summary
+    const tokenLine = tokenStats.totals.calls === 0
+      ? "📊 Belum ada call. Jalankan /chat, /roast, /aiplaylist."
+      : `📊 **${tokenStats.totals.totalTokens.toLocaleString()}** tokens • **${tokenStats.totals.calls}** call(s) • Est. **$${estCost.toFixed(2)}**\n_Lihat detail: /ai-set tokens stats_`;
 
     const embed = new EmbedBuilder()
       .setColor(Colors.AI)
@@ -676,6 +845,11 @@ module.exports = {
             `• Fallback: **${fallbackEnabled ? "ON" : "OFF"}**\n` +
             `• Memory: **${memEnabled ? "ON" : "OFF"}**\n` +
             `• Cache: **${cacheStats.totalEntries}** entries (${cacheStats.totalUsers} users)`,
+          inline: false,
+        },
+        {
+          name: "💰 Token Usage (all-time)",
+          value: tokenLine,
           inline: false,
         }
       )

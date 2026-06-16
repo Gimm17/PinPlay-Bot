@@ -337,7 +337,7 @@ function parseSubcommand(type, args) {
     }
 
     case "ai-set": {
-      const validSubs = ["model", "limit", "whitelist", "userlimit", "bonus", "reset-limit", "memory", "fallback", "cache", "limits", "view"];
+      const validSubs = ["model", "limit", "whitelist", "userlimit", "bonus", "reset-limit", "memory", "fallback", "cache", "limits", "tokens", "view"];
       if (!validSubs.includes(subcommand)) {
         throw new Error(
           `Invalid sub. Must be one of: ${validSubs.join(", ")}`
@@ -480,6 +480,30 @@ function parseSubcommand(type, args) {
           throw new Error("Usage: .ais cache <stats|clear>");
         }
         options.action = rest[0].toLowerCase();
+      } else if (subcommand === "tokens") {
+        if (rest.length === 0) {
+          // default to stats
+          options.action = "stats";
+        } else {
+          options.action = rest[0].toLowerCase();
+          if (options.action === "cost") {
+            if (rest.length < 3) {
+              throw new Error("Usage: .ais tokens cost <modelKey> <value>");
+            }
+            options.modelkey = rest[1];
+            const num = Number(rest[2]);
+            if (!Number.isFinite(num) || num < 0) {
+              throw new Error("Value must be a non-negative number");
+            }
+            options.value = num;
+          } else if (options.action === "costlist") {
+            // no extra args
+          } else if (options.action === "reset") {
+            // no extra args
+          } else if (options.action !== "stats") {
+            throw new Error("Usage: .ais tokens <stats|reset|cost|costlist>");
+          }
+        }
       }
       // view: no extra args
 
