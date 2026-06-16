@@ -33,6 +33,13 @@ const config = {
   nvidia: {
     apiKey: process.env.NVIDIA_API_KEY || null
   },
+  tokenrouter: {
+    apiKey: process.env.TOKENROUTER_API_KEY || null
+  },
+  ai: {
+    defaultProvider: process.env.AI_DEFAULT_PROVIDER || "nvidia",
+    defaultModel: process.env.AI_DEFAULT_MODEL || null
+  },
   logLevel: (process.env.LOG_LEVEL || "info").toLowerCase(),
   prefix: process.env.PREFIX || ".",
 };
