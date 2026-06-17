@@ -59,9 +59,47 @@ async function fetchFromSpotify(seedTrack) {
   return null;
 }
 
-async function fetchFromYouTube(seedTrack) {
-  // TODO Task 5
-  return null;
+async function fetchFromYouTube(player, seedTrack) {
+  // Resolve YouTube video ID from URI or use search query
+  let query = null;
+
+  if (seedTrack.uri && (seedTrack.uri.includes('youtube.com') || seedTrack.uri.includes('youtu.be'))) {
+    const videoIdMatch = seedTrack.uri.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (videoIdMatch) {
+      const videoId = videoIdMatch[1];
+      query = `https://www.youtube.com/watch?v=${videoId}&list=RD${videoId}`;
+    }
+  }
+
+  if (!query) {
+    query = `${seedTrack.author || ''} ${seedTrack.title || ''} mix`.trim();
+  }
+  if (!query) return null;
+
+  // Get kazagumo instance from player (Kazagumo Player has .kazagumo ref)
+  const kazagumo = player.kazagumo;
+  if (!kazagumo) {
+    logger.warn(`[autoplay] no kazagumo instance on player for guild ${player.guildId}`);
+    return null;
+  }
+
+  const result = await kazagumo.search(query, { requester: seedTrack.requester || null });
+  if (!result || !result.tracks || result.tracks.length === 0) return null;
+
+  const topPicks = result.tracks.slice(0, 5);
+  const pick = topPicks[Math.floor(Math.random() * topPicks.length)];
+
+  // Duration filter: 1-10 minutes
+  const durationMs = pick.length || pick.duration || 0;
+  if (durationMs > 0 && (durationMs < 60_000 || durationMs > 600_000)) {
+    for (const t of topPicks) {
+      const d = t.length || t.duration || 0;
+      if (d === 0 || (d >= 60_000 && d <= 600_000)) return t;
+    }
+    return null;
+  }
+
+  return pick;
 }
 
 function hasSpotifyConfig() {
@@ -120,7 +158,7 @@ async function fetchRelated(player, currentTrack) {
     try {
       logger.info(`[autoplay] fetch from youtube for "${currentTrack.title}"`);
       const result = await Promise.race([
-        fetchFromYouTube(currentTrack),
+        fetchFromYouTube(player, currentTrack),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
       ]);
       if (result) {
