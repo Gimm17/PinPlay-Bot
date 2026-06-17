@@ -198,6 +198,42 @@ function _shouldExtract(userId, userText) {
 - **No AI quality regression** — yang ke-skip cuma pesan yang emang gak ada insight (acks, reactions, one-word replies)
 - **New exports**: `_shouldExtract`, `markExtractFired`, `EXTRACT_MIN_LENGTH`, `EXTRACT_THROTTLE_MS` (untuk testing/owner inspection)
 
+### Changed - Surface Fallback Errors in callAIWithFallback
+
+#### Context
+
+Per `REVIEW_NOTES.md` concern #7: `callAIWithFallback` di `src/utils/aiProviderFallback.js` swallow fallback error. Kalau primary gagal terus fallback juga gagal, yang di-throw cuma `lastErr` (error primary). User/owner gak tau kalau fallback juga udah di-coba dan gagal — bikin debugging susah kalau root cause ada di fallback.
+
+#### Fix
+
+Wrap error jadi `Error` baru yang include both messages, plus attach diagnostic props:
+
+```js
+if (fbErr && fbErr !== lastErr) {
+  const wrapped = new Error(
+    `${lastErr?.message || lastErr} (fallback ${swapProvider}/${swapModel} juga gagal: ${fbErr?.message || fbErr})`
+  );
+  wrapped.cause = lastErr;
+  wrapped.fallbackError = fbErr;
+  wrapped.originalError = lastErr;
+  throw wrapped;
+}
+throw lastErr;
+```
+
+#### Behavior
+
+- **Both fail**: thrown error has concatenated message + `.cause` / `.fallbackError` / `.originalError` props
+- **Primary fails, no fallback available**: original `lastErr` thrown unchanged (no wrap overhead)
+- **Primary fails, fallback succeeds**: returns fallback result (no change)
+- **Discord embed rendering**: `errorEmbed()` shows `.message` first, so user sees both errors inline. Internal logs udah catat keduanya secara terpisah.
+
+#### Backward Compatibility
+
+- Existing callers (`chat.js`, `roast.js`, `aiplaylist.js`) catch `err.message` — masih works karena wrapped error nge-ekspose combined message di `.message`.
+- Tambah `err.cause` (standard Error property) — bisa di-inspect pake standard pattern.
+- `err.fallbackError` / `err.originalError` — extra diagnostic fields (non-standard tapi helpful).
+
 ---
 
 ## [Unreleased]
