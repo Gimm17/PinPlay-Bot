@@ -31,7 +31,31 @@ function resetCooldown(guildId) {
 
 // Private helpers (stubs - implemented in Task 4 & 5)
 async function fetchFromSpotify(seedTrack) {
-  // TODO Task 4
+  // Extract Spotify track ID from URI
+  // seedTrack.uri format: "spotify:track:abc123" or full URL
+  let trackId = null;
+  if (seedTrack.uri?.startsWith('spotify:track:')) {
+    trackId = seedTrack.uri.split(':')[2];
+  } else if (seedTrack.identifier) {
+    trackId = seedTrack.identifier;
+  }
+  if (!trackId) return null;
+
+  // Try to use existing spotify helper if available
+  try {
+    const spotifyModule = require('./spotify');
+    if (typeof spotifyModule.getRecommendations === 'function') {
+      const recs = await spotifyModule.getRecommendations([trackId], 5);
+      if (recs && recs.length > 0) {
+        // Return first rec (kazagumo will resolve to playable via youtube search upstream)
+        return recs[0];
+      }
+    }
+  } catch (e) {
+    logger.warn(`[autoplay] spotify.getRecommendations failed: ${e.message}`);
+  }
+
+  // No recommendation impl or no results - signal fallback
   return null;
 }
 
