@@ -74,6 +74,9 @@ function getGuildSettings(guildId) {
 
       // Optional: batasi command hanya di satu channel (request channel)
       requestChannelId: null,
+
+      // Autoplay
+      autoplayOn: false,
     }
   );
 }
