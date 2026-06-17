@@ -82,7 +82,8 @@ module.exports = {
     }
 
     // === Rate limit check (shared across all AI features) ===
-    const rl = aiLimits.checkAndIncrement(interaction.user.id);
+    // `/roast` is in the FREE_COMMANDS set — unlimited, doesn't consume a slot.
+    const rl = aiLimits.checkAndIncrement(interaction.user.id, "roast");
     if (!rl.allowed) {
       const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
       return interaction.reply({
