@@ -238,6 +238,12 @@ throw lastErr;
 
 ## [Unreleased]
 
+### Resolved - Concern #9 (roast cache hit rate limit)
+
+`REVIEW_NOTES.md` concern #9 flagged that `/roast` cache hits still consume rate limit slots. This was **resolved indirectly** by commit `8a112bc` (Free Command feature), which added `/roast` to the `FREE_COMMANDS` set. `checkAndIncrement(userId, "roast")` now returns `reason: "free-command"` with `remaining: Infinity` and **does not consume a slot** — both cache hit and cache miss paths bypass rate limit entirely. No code change required; concern is moot.
+
+`REVIEW_NOTES.md` updated locally to mark this as ✅ resolved.
+
 ### Changed - Race Condition Documentation & Test Helper
 
 #### Context
