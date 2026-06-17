@@ -191,7 +191,18 @@ async function callAIWithFallback(opts = {}) {
       `[AI] Fallback ${swapProvider}/${swapModel} also failed:`,
       fbErr?.message || fbErr
     );
-    // Throw original error (more user-friendly context)
+    // Surface original error to the user, but include fallback failure in
+    // the message so logs and Discord embeds give the full picture. Internal
+    // logs already capture both errors separately above.
+    if (fbErr && fbErr !== lastErr) {
+      const wrapped = new Error(
+        `${lastErr?.message || lastErr} (fallback ${swapProvider}/${swapModel} juga gagal: ${fbErr?.message || fbErr})`
+      );
+      wrapped.cause = lastErr;
+      wrapped.fallbackError = fbErr;
+      wrapped.originalError = lastErr;
+      throw wrapped;
+    }
     throw lastErr;
   }
 }
