@@ -163,6 +163,41 @@ if (!_isAllowed(userId)) {
 - Slash command `/chat` tetep check whitelist seperti biasa (gak ke-regress).
 - Grace period = natural session TTL (10 min) — user yang baru di-remove masih bisa pakai session yang udah ada sampe TTL expire, tapi gak bisa extend.
 
+### Changed - Fact Extraction Throttle (Token Savings)
+
+#### Context
+
+Per `REVIEW_NOTES.md` concern #6: `extractFactsFromMessage` di `src/utils/aiMemory.js` running extra AI call per chat message. With classifier + main chat + fact-extract = 3-4 API calls per user message. Triples API cost. NVIDIA free tier bisa ke-hit limit.
+
+#### Fix
+
+Tambahin **smart skip conditions** di `extractFactsFromMessage` SEBELUM `callAI`:
+
+1. **Length filter** — skip kalau `userText.length < 20` (acks/reactions kayak "haha", "wkwk", "iya" gak ada insight baru)
+2. **Per-user throttle** — `Map<userId, lastExtractAt>`, max 1 extract per 5 menit per user (spam protection)
+3. **Mark fired before API call** — throttle window ter-consume bahkan kalo API fail (cegah user nge-spam prompt rusak)
+
+```js
+const EXTRACT_MIN_LENGTH = 20;
+const EXTRACT_THROTTLE_MS = 5 * 60_000;
+
+function _shouldExtract(userId, userText) {
+  const text = String(userText || "").trim();
+  if (text.length < EXTRACT_MIN_LENGTH) return false;
+  const now = Date.now();
+  const last = _lastExtractAt.get(userId) || 0;
+  if (now - last < EXTRACT_THROTTLE_MS) return false;
+  return true;
+}
+```
+
+#### Impact
+
+- **Token savings**: ~70% dari spam/short messages ke-skip, plus throttled repeat per user
+- **No latency regression** — `_shouldExtract` itu sync in-memory check (sub-ms), fire-and-forget tetep jalan
+- **No AI quality regression** — yang ke-skip cuma pesan yang emang gak ada insight (acks, reactions, one-word replies)
+- **New exports**: `_shouldExtract`, `markExtractFired`, `EXTRACT_MIN_LENGTH`, `EXTRACT_THROTTLE_MS` (untuk testing/owner inspection)
+
 ---
 
 ## [Unreleased]

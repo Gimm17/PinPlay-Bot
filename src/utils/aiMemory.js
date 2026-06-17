@@ -317,9 +317,41 @@ ATURAN:
 - Kalau pesannya gak ada insight baru, output [].
 - HANYA balas JSON array. Tidak ada teks lain.`;
 
+// === Throttle: cap extract API calls per user to save tokens ===
+// Map<userId, timestamp_ms_of_last_extract>
+const _lastExtractAt = new Map();
+const EXTRACT_MIN_LENGTH = 20;        // skip short ack/reaction like "haha", "wkwk", "iya"
+const EXTRACT_THROTTLE_MS = 5 * 60_000; // 5 min between extracts per user
+
+/**
+ * Decide whether to call AI for fact extraction. Cheap pre-checks to save tokens:
+ * 1. Skip if text is too short (acks/reactions)
+ * 2. Skip if throttled (max 1 extract per 5 min per user)
+ * Returns true if the call should proceed.
+ */
+function _shouldExtract(userId, userText) {
+  const text = String(userText || "").trim();
+  if (text.length < EXTRACT_MIN_LENGTH) return false;
+  const now = Date.now();
+  const last = _lastExtractAt.get(userId) || 0;
+  if (now - last < EXTRACT_THROTTLE_MS) return false;
+  return true;
+}
+
+/** Record that an extract call just happened (called from caller after firing). */
+function markExtractFired(userId) {
+  _lastExtractAt.set(userId, Date.now());
+}
+
 async function extractFactsFromMessage(userId, userText, _assistantText) {
   if (!isMemoryEnabled() || !userId || !userText) return;
   if (!isAIAvailable()) return;
+  if (!_shouldExtract(userId, userText)) return;
+
+  // Mark fired first so even failed calls still consume the throttle window
+  // (prevents user from hammering the API on broken prompts).
+  markExtractFired(userId);
+
   try {
     const raw = await callAI({
       messages: [
@@ -366,7 +398,12 @@ module.exports = {
   isMemoryEnabled,
   // Background
   extractFactsFromMessage,
+  // Throttle helpers (for tests / owner inspection)
+  _shouldExtract,
+  markExtractFired,
   // Constants
   MAX_FACTS_PER_USER,
   MAX_INJECT_CHARS,
+  EXTRACT_MIN_LENGTH,
+  EXTRACT_THROTTLE_MS,
 };
