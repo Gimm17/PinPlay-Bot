@@ -253,8 +253,16 @@ module.exports = {
       });
     }
 
+    const user = interaction.user;
+    const query = interaction.options.getString("query");
+
+    // Deteksi prefix command: PrefixContext gak punya isChatInputCommand
+    const isPrefix = typeof interaction.isChatInputCommand !== "function";
+
     // === Rate limit check (shared across all AI features) ===
     // `/aiplaylist` is in the FREE_COMMANDS set — unlimited, doesn't consume a slot.
+    // Ephemeral reply (flags:64) since this is a self-service check —
+    // doesn't need to be visible to other channel members.
     const rl = aiLimits.checkAndIncrement(interaction.user.id, "aiplaylist");
     if (!rl.allowed) {
       const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
@@ -264,7 +272,7 @@ module.exports = {
       });
     }
 
-    // Voice check (sebelum defer)
+    // Voice check (ephemeral: only relevant to the requesting user)
     const vc = interaction.member?.voice?.channel;
     if (!vc) {
       return interaction.reply({
@@ -273,13 +281,7 @@ module.exports = {
       });
     }
 
-    const user = interaction.user;
-    const query = interaction.options.getString("query");
-
-    // Deteksi prefix command: PrefixContext gak punya isChatInputCommand
-    const isPrefix = typeof interaction.isChatInputCommand !== "function";
-
-    // === Ada query → langsung generate ===
+    // === Ada query → defer reply lalu generate ===
     if (query && query.trim()) {
       try {
         await interaction.deferReply();
@@ -290,7 +292,8 @@ module.exports = {
     }
 
     // === Tidak ada query ===
-    // Slash command: minta user ulang dengan query (gak bisa collector dengan mudah)
+    // Slash command: minta user ulang dengan query (gak bisa collector dengan mudah).
+    // Ephemeral since this is a hint to the caller.
     if (!isPrefix) {
       return interaction.reply({
         embeds: [infoEmbed("🎧 Mau playlist apa gezz? Jalankan lagi dengan tema, contoh:\n`/aiplaylist query: lagu galau indo viral`")],
@@ -299,55 +302,41 @@ module.exports = {
     }
 
     // Prefix command: tanya, lalu tunggu jawaban via message collector
-    await interaction.reply(
+    return interaction.reply(
       "🎧 **Pengen playlist apa gezz?**\nKetik tema/mood yang kamu mau (contoh: `lagu galau indo viral`). Kamu punya 60 detik..."
-    );
-
-    const channel = interaction.channel;
-    if (!channel || typeof channel.createMessageCollector !== "function") {
-      return;
-    }
-
-    const collector = channel.createMessageCollector({
-      filter: (m) => m.author.id === user.id,
-      max: 1,
-      time: 60_000,
-    });
-
-    collector.on("collect", async (msg) => {
-      const theme = (msg.content || "").trim();
-      if (!theme) {
-        return interaction.followUp("❌ Tema kosong. Coba lagi `.ap <tema>`.").catch(() => null);
-      }
-
-      // Pastikan masih di VC
-      const vcNow = msg.member?.voice?.channel || vc;
-
-      // Kirim placeholder baru biar bisa di-editReply lewat followUp message
-      const placeholder = await channel
-        .send("🤖 AI lagi nyusun playlist buat kamu...")
-        .catch(() => null);
-
-      // Adapter mini: editReply → edit placeholder message
-      const ctx = {
-        guildId: interaction.guildId,
-        channelId: interaction.channelId,
-        id: msg.id,
-        editReply: (payload) => {
-          if (!placeholder) return Promise.resolve(null);
-          const p = typeof payload === "string" ? { content: payload } : payload;
-          return placeholder.edit(p).catch(() => null);
-        },
-      };
-
-      return _generateAndShow(ctx, client, theme, user, vcNow);
-    });
-
-    collector.on("end", (collected) => {
-      if (collected.size === 0) {
-        interaction.followUp("⏰ Waktu habis. Coba lagi `.ap <tema>` ya.").catch(() => null);
-      }
-    });
+    ).then(() => {
+      const channel = interaction.channel;
+      if (!channel || typeof channel.createMessageCollector !== "function") return;
+      const collector = channel.createMessageCollector({
+        filter: (m) => m.author.id === user.id,
+        max: 1,
+        time: 60_000,
+      });
+      collector.on("collect", async (msg) => {
+        const theme = (msg.content || "").trim();
+        if (!theme) {
+          return interaction.followUp("❌ Tema kosong. Coba lagi `.ap <tema>`.").catch(() => null);
+        }
+        const vcNow = msg.member?.voice?.channel || vc;
+        const placeholder = await channel.send("🤖 AI lagi nyusun playlist buat kamu...").catch(() => null);
+        const ctx = {
+          guildId: interaction.guildId,
+          channelId: interaction.channelId,
+          id: msg.id,
+          editReply: (payload) => {
+            if (!placeholder) return Promise.resolve(null);
+            const p = typeof payload === "string" ? { content: payload } : payload;
+            return placeholder.edit(p).catch(() => null);
+          },
+        };
+        return _generateAndShow(ctx, client, theme, user, vcNow);
+      });
+      collector.on("end", (collected) => {
+        if (collected.size === 0) {
+          interaction.followUp("⏰ Waktu habis. Coba lagi `.ap <tema>` ya.").catch(() => null);
+        }
+      });
+    }).catch(() => null);
   },
 };
 
