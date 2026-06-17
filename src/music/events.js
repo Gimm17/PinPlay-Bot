@@ -6,6 +6,7 @@ const { updatePanel } = require("./panel");
 const { recordTrack } = require("../commands/history");
 const { Colors } = require("../utils/colors");
 const { formatMs, thumb } = require("../utils/format");
+const { getAutoplayOn } = require("../utils/autoplay");
 
 function attachMusicEvents(client) {
   const kazagumo = client.kazagumo;
@@ -133,6 +134,15 @@ function attachMusicEvents(client) {
       embeds: [embed],
       allowedMentions: { parse: [] },
     }).catch((e) => log.warn("Started playing send failed:", e?.message || e));
+
+    // Autoplay hook
+    if (getAutoplayOn(player.guildId)) {
+      const { fetchRelated, resetCooldown } = require("../utils/autoplay");
+      resetCooldown(player.guildId); // user just played something, reset any stale cooldown
+      fetchRelated(player, track).catch(err => {
+        log.error(`[autoplay] unhandled error in playerStart: ${err.message}`);
+      });
+    }
   });
 
   kazagumo.on("playerEnd", async (player) => {
