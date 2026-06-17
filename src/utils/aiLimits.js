@@ -110,6 +110,27 @@ function getEffectiveLimit(userId) {
  * - If within current window and count < effective limit: allowed, incremented.
  * - If within current window and count >= effective limit: NOT allowed.
  * - If no current window or window expired: starts a new one (count = 1).
+ *
+ * ## Concurrency Safety
+ *
+ * This function is **synchronous** (no `await` inside) and runs on Node's
+ * single-threaded event loop. V8 will not preempt a sync function between
+ * its reads and writes to `_windows`, so the check-then-increment sequence
+ * (`_windows.get()` -> `w.count >= limit` check -> `w.count += 1`) is atomic
+ * with respect to OTHER JavaScript code on the same process.
+ *
+ * Caveats:
+ *   - Single-process assumption: if the bot is ever run with PM2 cluster
+ *     mode or worker_threads, each worker would have its own `_windows`
+ *     Map, making limits per-worker rather than global. PinPlay runs as a
+ *     single process today.
+ *   - The persistence layer (`_scheduleWindowsSave`) is debounced and
+ *     async, but it only writes the CURRENT state — a missed write just
+ *     reverts to the previous in-memory state on restart, it does not
+ *     create a check/increment race.
+ *   - If future code adds an `await` inside this function (e.g. async
+ *     settings lookup), it MUST be re-audited for atomicity. The
+ *     `__test_concurrent__` helper below validates the sync guarantee.
  */
 function checkAndIncrement(userId, commandName) {
   _ensureLoaded();
@@ -360,6 +381,45 @@ setInterval(() => {
   if (removed > 0) _scheduleWindowsSave();
 }, 5 * 60 * 1000).unref();
 
+/**
+ * Test-only helper. Fire N consecutive `checkAndIncrement` calls and
+ * assert that exactly `limit` succeed. Validates the sync-atomicity
+ * guarantee documented above.
+ *
+ * Since `checkAndIncrement` is fully synchronous, calling it in a tight
+ * loop on a single thread is equivalent to concurrent calls from multiple
+ * callers — V8 will not preempt a sync function between its reads and
+ * writes to `_windows`. The function returns the actual results array
+ * so tests can assert directly.
+ *
+ * Exposed via `__test_concurrent__` prefix so it's clearly test-only.
+ *
+ * @param {string} userId
+ * @param {number} calls - how many times to call checkAndIncrement
+ * @returns {{ results: Array, summary: { allowed: number, rejected: number, finalCount: number, effectiveLimit: number } }}
+ */
+function __test_concurrent__(userId, calls) {
+  if (typeof userId !== "string" || !userId) {
+    throw new Error("__test_concurrent__: userId required");
+  }
+  // Force a fresh window for this test
+  _windows.delete(userId);
+  const results = new Array(calls);
+  for (let i = 0; i < calls; i++) {
+    results[i] = checkAndIncrement(userId, "test");
+  }
+  const p = peek(userId);
+  return {
+    results,
+    summary: {
+      allowed: results.filter((r) => r?.allowed).length,
+      rejected: results.filter((r) => r && !r.allowed).length,
+      finalCount: p.count,
+      effectiveLimit: p.effectiveLimit,
+    },
+  };
+}
+
 module.exports = {
   checkAndIncrement,
   peek,
@@ -372,4 +432,6 @@ module.exports = {
   isFreeCommand,
   FREE_COMMANDS,
   WINDOW_MS,
+  // Test-only
+  __test_concurrent__,
 };

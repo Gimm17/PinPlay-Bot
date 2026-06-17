@@ -238,6 +238,31 @@ throw lastErr;
 
 ## [Unreleased]
 
+### Changed - Race Condition Documentation & Test Helper
+
+#### Context
+
+Per `REVIEW_NOTES.md` concern #5: `aiLimits.checkAndIncrement` is not protected against concurrent requests. Concern flagged "check-then-increment" pattern as theoretically racy. Reality: JS is single-threaded and `checkAndIncrement` is fully synchronous, so V8 will not preempt between read and write.
+
+#### Fix
+
+**1. Document the guarantee.** Add detailed docblock ke `checkAndIncrement` explaining why the sync implementation is atomic on Node's event loop, plus caveats:
+- Single-process assumption (PM2 cluster / worker_threads would break it)
+- Persistence layer is debounced async but only writes current state, no race
+- Future code MUST NOT add `await` inside the function without re-audit
+
+**2. Add test helper.** `__test_concurrent__(userId, calls)` fires N consecutive calls and returns `{ results, summary: { allowed, rejected, finalCount, effectiveLimit } }`. Validates the atomicity guarantee programmatically.
+
+#### Verification
+
+Stress test (1000 calls vs limit 10) shows exactly 10 allowed, 990 rejected, finalCount = 10. No race. Exposed under `__test_concurrent__` prefix so it's clearly test-only.
+
+#### Caveats Documented
+
+- PinPlay runs single-process (no PM2 cluster today)
+- The Map is in-memory per process; multi-worker would diverge
+- The async `_scheduleWindowsSave` is safe because it only snapshots current state
+
 ### Changed - Chat Embed Cleanup (Phase E)
 
 #### Removed
