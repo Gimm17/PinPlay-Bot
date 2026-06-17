@@ -37,8 +37,7 @@ User mengontrol via command `/autoplay on|off|status` (prefix: `.autoplay`). Sta
 ```
 playerStart (events.js)
   → cek: guild.autoplayOn === true
-  → cek: lastTrack.isAutoplay === true (atau first iteration)
-    → call autoplay.fetchRelated(player, lastTrack)
+    → call autoplay.fetchRelated(player, track) // track = current track yang baru mulai
       → Spotify first → YouTube fallback
       → success: add to queue dengan isAutoplay:true
       → fail: log + cooldown 30s, retry
@@ -56,7 +55,7 @@ playerStart (events.js)
 
 ### User feedback
 - **One-time channel message** saat autoplay fetch pertama berhasil per session:
-  `🎵 **Autoplay started** — adding related tracks based on "{lastTrack.title}"`
+  `🎵 **Autoplay started** — adding related tracks based on "{currentTrack.title}"`
 - **Panel label**: kalau current track `isAutoplay`, embed panel tambah field `🎵 Autoplay (Spotify) • Use /autoplay off to disable`
 - Gak ada DM spam, gak ada notif per track
 
@@ -91,7 +90,7 @@ playerStart (events.js)
 **Public API:**
 ```js
 module.exports = {
-  fetchRelated,        // (player, lastTrack) → Promise<Track|null>
+  fetchRelated,        // (player, currentTrack) → Promise<Track|null>
   getAutoplayOn,       // (guildId) → boolean
   setAutoplayOn,       // (guildId, boolean) → void
   _cooldownMap,        // Map<guildId, timestamp> (exposed for tests)
@@ -116,14 +115,14 @@ const COOLDOWN_MS = 30_000;
 const TIMEOUT_MS = 5_000;
 ```
 
-### Spotify related track flow
-1. `lastTrack.identifier` (Spotify URI) → cek `sourceName === 'spotify'`
+### Spotify related track flow (uses currentTrack as seed)
+1. `currentTrack.identifier` (Spotify URI) → cek `sourceName === 'spotify'`
 2. `GET /v1/recommendations?seed_tracks={id}&limit=5`
 3. Convert ke Kazagumo Track via search query `"{track.name} {artist.name}"`
 4. Filter durasi reasonable (1-10 menit, skip mix/compilation)
 
-### YouTube Mix fallback flow
-1. `lastTrack.uri` (YouTube watch URL) → construct `RD{lastVideoId}` playlist
+### YouTube Mix fallback flow (uses currentTrack as seed)
+1. `currentTrack.uri` (YouTube watch URL) → construct `RD{lastVideoId}` playlist
 2. `kazagumo.search("https://youtube.com/playlist?list=RD{lastVideoId}", "ytsearch")`
 3. Ambil top result (atau random dari top 5 biar gak predictable)
 
@@ -216,7 +215,7 @@ fetchRelated returns:
 | Skenario | Behavior |
 |----------|----------|
 | User `/play` manual saat autoplay ON | Track manual ditambahin, next fetch via autoplay, cooldown reset |
-| User `/play` setelah enable autoplay (no track) | Autoplay trigger setelah track pertama selesai |
+| User `/play` setelah enable autoplay (no track) | Autoplay trigger setelah track manual selesai (lastTrack.isAutoplay tidak harus true) |
 | Bot restart | `autoplayOn` persisted, `_notifiedThisSession` lost (OK, notify lagi first time) |
 | Spotify exclusive track (gak ada di YT) | Search query `artist + track name` fallback |
 | User spam `/autoplay on` | Idempotent, no extra side-effect |
