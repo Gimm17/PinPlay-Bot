@@ -9,6 +9,41 @@ dan project ini menggunakan versioning semantik.
 
 ## [Unreleased]
 
+### Added - Autoplay Feature
+
+Auto-add related tracks when queue ends. Toggleable per-guild.
+
+#### Behavior
+
+- **Source priority:** Spotify first (if configured + current track is Spotify), YouTube Mix fallback
+- **Track metadata:** autoplay tracks tagged with `isAutoplay: true` + `autoplaySource: 'spotify'|'youtube'`
+- **Cooldown:** 30s after both sources fail, prevents spam retry
+- **One-time notify:** First autoplay fetch per session sends `🎵 **Autoplay started** — adding related tracks based on "..."` to the channel
+- **Panel indicator:** Footer shows `🎵 Autoplay (spotify)` or `🎵 Autoplay (youtube)` for autoplay tracks
+- **Default:** OFF (opt-in per guild)
+
+#### Commands
+
+- `/autoplay on|off|status` (slash) — ephemeral replies
+- `.autoplay on|off|status` (prefix) — public replies
+- `/autoplay off` to disable; state persists in `data/guildSettings.json` (`autoplayOn: bool`)
+
+#### Files
+
+- `src/utils/autoplay.js` — fetch logic, cooldown, state helpers
+- `src/commands/autoplay.js` — slash command
+- `test-autoplay.js` — manual smoke test harness
+- `src/utils/storage.js` — `autoplayOn: false` default in `getGuildSettings()`
+- `src/music/events.js` — `playerStart` hook
+- `src/music/panel.js` — footer indicator
+- `src/config/prefixAliases.js` — `autoplay` alias for prefix
+- `docs/autoplay-integration-test.md` — integration test checklist
+
+#### Known Limitations
+
+- Spotify recommendations need a `getRecommendations` helper in `src/utils/spotify.js` (not yet implemented). Currently falls back to YouTube. This is graceful degradation per spec.
+- `fetchFromYouTube` uses `player.kazagumo` which is set by Kazagumo Player on construction.
+
 ### Changed - `.roast` & `.aiplaylist` jadi Unlimited (Free Command)
 
 #### Context
