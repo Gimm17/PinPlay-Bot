@@ -65,6 +65,10 @@ function buildPanelEmbed(player, client) {
   const s = getGuildSettings(player.guildId);
   const footerParts = [`📜 Queue: ${queueCount > 0 ? `${queueCount} lagu` : "kosong"}`];
   if (s.stay247) footerParts.push("24/7 ON");
+  if (current?.isAutoplay) {
+    const source = current.autoplaySource || "auto";
+    footerParts.push(`🎵 Autoplay (${source})`);
+  }
   embed.setFooter({ text: footerParts.join("  •  ") });
 
   return embed;
