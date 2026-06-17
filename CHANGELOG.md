@@ -9,6 +9,102 @@ dan project ini menggunakan versioning semantik.
 
 ## [Unreleased]
 
+### Changed - `.roast` & `.aiplaylist` jadi Unlimited (Free Command)
+
+#### Context
+
+Owner request: `/roast` dan `/aiplaylist` jangan dihitung sebagai AI request user. Keduanya fitur kasual/fun, jadi harusnya gak nge-grab quota yang dipake `/chat`.
+
+#### Behavior Baru
+
+- `/roast` (`.roast`) — **unlimited, gak makan quota**
+- `/aiplaylist` (`.ap`) — **unlimited, gak makan quota**
+- `/chat` (`.chat`) — tetep pake hourly limit seperti biasa (default 5/jam, owner bypass)
+
+#### Modified - `src/utils/aiLimits.js`
+
+Tambah konsep **FREE_COMMANDS**: set command yang bypass rate limit check.
+
+```js
+const FREE_COMMANDS = new Set(["roast", "aiplaylist"]);
+
+function isFreeCommand(name) {
+  return typeof name === "string" && FREE_COMMANDS.has(name);
+}
+```
+
+`checkAndIncrement(userId, commandName)` sekarang nerima parameter kedua. Kalau `commandName` ada di `FREE_COMMANDS`, return bypass result (sama shape kayak `owner-bypass`) **tanpa consume slot** atau nge-touch window counter:
+
+```js
+if (isFreeCommand(commandName)) {
+  return {
+    allowed: true,
+    remaining: Infinity,
+    resetAt: null,
+    reason: "free-command",
+    limit: Infinity,
+  };
+}
+```
+
+`commandName` optional — existing callers (chat.js) yang gak pass parameter tetep work kayak sebelumnya (fall through ke normal rate limit logic).
+
+**New exports:** `isFreeCommand(name)`, `FREE_COMMANDS`.
+
+#### Modified - `src/commands/roast.js`
+
+```diff
+- const rl = aiLimits.checkAndIncrement(interaction.user.id);
++ const rl = aiLimits.checkAndIncrement(interaction.user.id, "roast");
+```
+
+#### Modified - `src/commands/aiplaylist.js`
+
+```diff
+- const rl = aiLimits.checkAndIncrement(interaction.user.id);
++ const rl = aiLimits.checkAndIncrement(interaction.user.id, "aiplaylist");
+```
+
+#### Modified - `src/commands/limit.js`
+
+Update tip text di `/ai-limit` embed biar user tau command mana yang counted vs free:
+
+**Sebelum:**
+```
+_Tip: Limit ini di-share oleh /chat, /roast, dan /aiplaylist._
+```
+
+**Sesudah:**
+```
+_Tip: Limit ini cuma dihitung dari /chat. /roast & /aiplaylist unlimited (gak makan quota)._
+```
+
+#### Yang TETAP Berubah (tidak dipengaruhi)
+
+- **Token usage tracking** (`aiTokenUsage`) tetep record semua call (free atau counted) — cuma slot counter per-user yang skip. Jadi `/ai-set tokens stats` tetep akurat.
+- **Provider fallback** (`callAIWithFallback`) tetep jalan untuk free commands — tetep ada retry ke provider alternatif on 5xx.
+- **Cache** (`aiPromptCache`) tetep dipake di roast (same song = cached roast) — gak ada perubahan behavior.
+- **Voice check** (khusus `/aiplaylist`) tetep wajib join VC dulu.
+
+#### Migration
+
+Gak perlu migration. Perubahan murni:
+- `checkAndIncrement` signature backward compatible (parameter baru optional)
+- `data/aiLimits.json` gak keganggu (free commands gak pernah write ke window)
+- Slash command gak perlu re-deploy
+
+#### Verification
+
+Runtime test (non-owner user, base limit 10):
+- `.roast` × 1 → `{ allowed: true, reason: "free-command", limit: Infinity, remaining: Infinity }`
+- `.aiplaylist` × 1 → same
+- `.chat` × 2 → normal rate limit, counter naik ke 2
+- `peek(userId)` → `{ count: 2, limit: 10 }` (cuma 2 chat calls, free calls gak ke-count)
+
+---
+
+## [Unreleased]
+
 ### Added - Atomic Writes, Rate Limit Persistence, Token Monitoring
 
 #### Reliability
@@ -40,73 +136,32 @@ dan project ini menggunakan versioning semantik.
 - `.ais tokens cost <modelKey> <value>` → `/ai-set tokens cost`
 - `.ais tokens costlist` → `/ai-set tokens costlist`
 
----
+### Changed - Whitelist Re-check on Chat Reply
 
-## [Unreleased]
+#### Context
 
-### Fixed - Smart Fallback Model Swap + Primary Retry
+Per `REVIEW_NOTES.md` concern #10: `handleChatReply` di `src/commands/chat.js` gak re-check whitelist. User yang udah di-remove dari whitelist mid-conversation masih bisa reply ke bot message lama sampai 10 menit (session TTL). Security concern kalo removal karena abuse.
 
-**Bug:** Saat primary `tokenrouter/MiniMax-M3` gagal (empty/5xx), fallback ke `nvidia` masih bawa model `MiniMax-M3` — yang mana model itu **gak ada di nvidia** → 404 page not found. User tetep dapet response karena `aiProviderFallback.js` throw err original (yang friendly), tapi underlying issue gak ke-address.
+#### Fix
 
-#### Changed
+Tambahin `_isAllowed(userId)` check di `handleChatReply` SEBELUM rate limit dan AI call:
 
-- **`src/utils/aiProviderFallback.js`**:
-  - **Smart model swap** — kalau model di primary gak ada di fallback provider, otomatis di-swap ke default model fallback. Misal `tokenrouter/MiniMax-M3` → fallback `nvidia` → swap ke `llama-3.3-70b`. Prevents 404 chain.
-  - **Primary retry** — 1 retry (500ms delay) untuk transient errors (empty response, 5xx, timeout) sebelum fallback. Ngurangin false-fallback yang sebenernya solvable dengan retry.
-  - **Non-retriable still tries fallback** — 404 (model not found), 429 (rate limit), 401/403 (bad key) gak di-retry, TAPI tetep di-fallback. 404 specifically sering ke-fix sama model swap.
-
-- **`src/utils/ai.js`**:
-  - **`MODELS_BY_PROVIDER`** — auto-derived map (provider → [modelKey, ...]) dari existing `MODELS` constant. Tambah model baru → otomatis registered. Ready untuk multi-model per provider (misal `tokenrouter: M3, Claude Sonnet, Qwen`).
-  - **`getModelsForProvider(provider)`** — get all model keys for a provider.
-  - **`isModelAvailableOnProvider(provider, model)`** — check if a model is registered on a provider. Used by fallback swap logic.
-  - **Improved 404 error** — `status === 404` sekarang throw message yang actionable: "Model `MiniMax-M3` gak ada di provider `nvidia`. Model yang tersedia di `nvidia`: llama-3.3-70b. Coba `/ai-set model <nama>` atau pastikan nama model bener." Gak ada lagi pesan generic yang bingungin.
-
-#### Future-proofing
-
-- `MODELS_BY_PROVIDER` derived dari `MODELS` jadi nambah model baru (e.g. `claude-sonnet` di `tokenrouter`) auto-handled sama fallback swap. Owner tinggal add entry di `MODELS` di `ai.js`.
-
-#### Fixed - Model name resolution (apiName vs key)
-
-**Bug:** `MODELS` punya key user-facing (`llama-3.3-70b`) yang berbeda dari nama model di API (`meta/llama-3.3-70b-instruct`). Sebelumnya `callAI` kirim **key** ke API, jadi waktu fallback `tokenrouter/MiniMax-M3` → `nvidia`, nvidia dapet `llama-3.3-70b` (key) bukan `meta/llama-3.3-70b-instruct` (apiName) → **404 page not found**.
-
-**Fix di `src/utils/ai.js`:**
-- Tambah `apiName` field ke setiap entry di `MODELS`. Contoh:
-  ```js
-  "llama-3.3-70b": {
-    provider: "nvidia",
-    apiName: "meta/llama-3.3-70b-instruct",  // ← nama yang dikirim ke API
-    label: "Llama 3.3 70B",
-    ...
-  }
-  ```
-- Tambah `resolveApiName(model)` helper — kalau `model` adalah key di `MODELS`, return `apiName`. Kalau bukan, passthrough (untuk backward compat).
-- `_resolveCall` sekarang manggil `resolveApiName()` sebelum return, jadi `callAI` selalu kirim **apiName** yang valid ke provider API.
-- Token usage tracking tetap pakai **key** user-facing (bukan apiName) supaya `/ai-set view` clean — owner liat "llama-3.3-70b" bukan "meta/llama-3.3-70b-instruct".
-
-**Future-proofing:** Saat owner nambah model baru, tinggal specify `apiName` di `MODELS`. Misal `claude-sonnet`:
 ```js
-"claude-sonnet": {
-  provider: "tokenrouter",
-  apiName: "anthropic/claude-3-5-sonnet",
-  label: "Claude Sonnet",
-  ...
+// Whitelist re-check: owner who removed user from whitelist should
+// block mid-conversation replies. 10-min grace period is implicit
+// (session TTL); once removed, no new replies allowed.
+if (!_isAllowed(userId)) {
+  return message
+    .reply({ embeds: [errorEmbed("⛔ Akses kamu sudah dicabut. Hubungi owner bot kalau mau akses lagi.")] })
+    .catch(() => null);
 }
 ```
-Key user-facing tetap `claude-sonnet`, tapi API dapat `anthropic/claude-3-5-sonnet`.
 
-#### Fixed - Misleading ERROR log on successful retry
-
-**Bug:** Kalau primary `callAI` throw retriable error (empty/5xx/timeout), log `ERROR` dicetak di `ai.js:300`. Tapi `callAIWithFallback` di retry dan **recovery sukses** → user tetap dapet response dengan benar. Hasilnya: log penuh ERROR merah yang misleading, seolah-olah ada failure padahal gak ada.
-
-**Fix di `src/utils/ai.js`:**
-- Ganti `log.error` jadi `log.warn` di catch handler `callAI`. Caller (`callAIWithFallback`) sekarang yang punya context penuh — dia log `WARN` saat retry attempt, dan `INFO` saat fallback/retry sukses. Kalau bener-bener exhausted, `ERROR` dicetak di `aiProviderFallback.js` (final failure).
-- Alur log jadi clean:
-  - `WARN`: primary attempt failed, retrying... (dari aiProviderFallback)
-  - `WARN`: AI call error [...] (dari ai.js — transient error, recovered by retry/fallback)
-  - `INFO`: Fallback nvidia/llama-3.3-70b succeeded (recovery)
-  - `ERROR`: cuma kalau semua attempts gagal total (final failure)
-
-User gak akan lihat ERROR merah lagi untuk chat yang sukses. Kalau ada ERROR, itu bener-bener berarti user juga gagal.
+- Owner selalu allowed (di-handle di `_isAllowed`).
+- Whitelisted user yang belum di-remove: tetep bisa reply.
+- Removed user: langsung dapet error, gak bisa reply lagi (bahkan kalo session-nya masih ada).
+- Slash command `/chat` tetep check whitelist seperti biasa (gak ke-regress).
+- Grace period = natural session TTL (10 min) — user yang baru di-remove masih bisa pakai session yang udah ada sampe TTL expire, tapi gak bisa extend.
 
 ---
 

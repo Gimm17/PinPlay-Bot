@@ -347,6 +347,15 @@ async function handleChatReply(message, client, session) {
       .catch(() => null);
   }
 
+  // Whitelist re-check: owner who removed user from whitelist should
+  // block mid-conversation replies. 10-min grace period is implicit
+  // (session TTL); once removed, no new replies allowed.
+  if (!_isAllowed(userId)) {
+    return message
+      .reply({ embeds: [errorEmbed("⛔ Akses kamu sudah dicabut. Hubungi owner bot kalau mau akses lagi.")] })
+      .catch(() => null);
+  }
+
   const prompt = (message.content || "").trim();
   if (!prompt) return;
 
