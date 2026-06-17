@@ -100,6 +100,7 @@ const SUBCOMMAND_ALIASES = {
   dj: { command: "djrole", parse: "subcommand:djrole" },
   access: { command: "access", parse: "subcommand:access" },
   ais: { command: "ai-set", parse: "subcommand:ai-set" },
+  autoplay: { command: "autoplay", parse: "subcommand:autoplay" },
 };
 
 // === Full command names as aliases ===
@@ -137,6 +138,7 @@ const FULL_COMMAND_ALIASES = {
   chat: { command: "chat", parse: "rest", option: "prompt", required: true },
   "ai-set": { command: "ai-set", parse: "subcommand:ai-set" },
   "ai-limit": { command: "ai-limit", parse: "none" },
+  autoplay: { command: "autoplay", parse: "subcommand:autoplay" },
 };
 
 // === GABUNG SEMUA ALIASES ===
@@ -508,6 +510,18 @@ function parseSubcommand(type, args) {
       // view: no extra args
 
       return new PrefixOptions(options);
+    }
+
+    case "autoplay": {
+      const validActions = ["on", "off", "status"];
+      if (!validActions.includes(subcommand)) {
+        throw new Error(
+          `Invalid action. Must be one of: ${validActions.join(", ")}`
+        );
+      }
+      return new PrefixOptions({
+        _subcommand: subcommand,
+      });
     }
 
     default:
