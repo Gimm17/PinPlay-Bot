@@ -44,7 +44,4 @@ module.exports = {
       });
     }
   },
-
-  // Prefix command mirror - implemented in Task 7
-  handlePrefix: null,
 };
