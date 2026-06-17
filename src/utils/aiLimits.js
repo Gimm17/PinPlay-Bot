@@ -34,6 +34,17 @@ const file = path.join(dataDir, "aiLimits.json");
 
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+// Commands that don't count toward the per-user AI rate limit.
+// `/roast` and `/aiplaylist` are casual/fun features — owner wanted them
+// unlimited so they don't compete with the main quota reserved for `/chat`.
+// They still call AI (token usage is tracked separately), but they bypass
+// the hourly check entirely.
+const FREE_COMMANDS = new Set(["roast", "aiplaylist"]);
+
+function isFreeCommand(name) {
+  return typeof name === "string" && FREE_COMMANDS.has(name);
+}
+
 function _loadWindows() {
   if (_writeTimer !== null) return; // already loaded (writeTimer null = fresh module, but we use a flag)
   // Use _windows.size as the "loaded" indicator — it's set on load
@@ -94,11 +105,13 @@ function getEffectiveLimit(userId) {
  * Returns { allowed, remaining, resetAt, reason?, limit }.
  *
  * - If the user is the owner: always allowed, remaining = Infinity.
+ * - If the command is in FREE_COMMANDS (roast, aiplaylist): always allowed,
+ *   no slot consumed — the user said these should be unlimited.
  * - If within current window and count < effective limit: allowed, incremented.
  * - If within current window and count >= effective limit: NOT allowed.
  * - If no current window or window expired: starts a new one (count = 1).
  */
-function checkAndIncrement(userId) {
+function checkAndIncrement(userId, commandName) {
   _ensureLoaded();
   if (!userId) {
     return { allowed: false, remaining: 0, resetAt: null, reason: "no-user", limit: 0 };
@@ -111,6 +124,17 @@ function checkAndIncrement(userId) {
       remaining: Infinity,
       resetAt: null,
       reason: "owner-bypass",
+      limit: Infinity,
+    };
+  }
+
+  // Free commands (roast, aiplaylist) are unlimited and don't consume a slot
+  if (isFreeCommand(commandName)) {
+    return {
+      allowed: true,
+      remaining: Infinity,
+      resetAt: null,
+      reason: "free-command",
       limit: Infinity,
     };
   }
@@ -345,5 +369,7 @@ module.exports = {
   listLimitOverrides,
   listAllLimits,
   getUserLimitStatus,
+  isFreeCommand,
+  FREE_COMMANDS,
   WINDOW_MS,
 };

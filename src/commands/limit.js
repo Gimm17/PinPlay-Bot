@@ -75,7 +75,7 @@ function _buildStatusEmbed(status) {
         `\`${bar}\`\n` +
         `**Sisa:** ${status.remaining} request\n` +
         `**Reset:** ${resetTxt}\n\n` +
-        `_Tip: Limit ini di-share oleh /chat, /roast, dan /aiplaylist._`
+        `_Tip: Limit ini cuma dihitung dari /chat. /roast & /aiplaylist unlimited (gak makan quota)._`
     )
     .setFooter({
       text: `Tipe akses: ${status.isOwner ? "Owner bypass" : "Standard user"} • Window: 1 jam rolling`,
