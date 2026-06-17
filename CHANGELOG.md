@@ -244,6 +244,51 @@ throw lastErr;
 
 `REVIEW_NOTES.md` updated locally to mark this as ✅ resolved.
 
+### Refactored - Concern #12 (ai-set duplicate code)
+
+#### Context
+
+Per `REVIEW_NOTES.md` concern #12: 4 subcommands di `ai-set.js` (whitelist, userlimit, bonus, reset-limit, memory) punya duplicate code pattern:
+
+1. **User resolution** (5 occurrences): `getUser("user")` → fallback ke `getString("user")` regex check
+2. **Ephemeral reply boilerplate** (15+ occurrences): `interaction.reply({ embeds: [embed], flags: 64 })`
+
+Maintenance burden: setiap perubahan ke user resolution harus di-update di 5 tempat.
+
+#### Fix
+
+Extract 2 helper di `src/commands/ai-set.js`:
+
+```js
+function _resolveUser(interaction) {
+  let user = interaction.options.getUser("user");
+  if (user) return user;
+  const rawUser = interaction.options.getString("user");
+  if (rawUser && /^\d{17,20}$/.test(rawUser)) {
+    return { id: rawUser };
+  }
+  return null;
+}
+
+async function _replyEphemeral(interaction, embed) {
+  return interaction.reply({ embeds: [embed], flags: 64 });
+}
+```
+
+#### Impact
+
+- **5 user-resolution sites** → 1 call to `_resolveUser()`
+- **15+ ephemeral reply sites** → 1 call to `_replyEphemeral()`
+- **Net: -38 lines** (215 deletions, 177 insertions) — file dari 862 ke 824 lines
+- **All 12 subcommands preserved** (verified via module load test)
+- **Zero behavior change** — purely refactor
+
+#### Verification
+
+- Syntax check pass
+- Module loads cleanly with all 12 subcommands intact
+- Owner check + reply pattern consistent across all subcommands
+
 ### Fixed - Concern #8 (aiplaylist response style consistency)
 
 #### Context

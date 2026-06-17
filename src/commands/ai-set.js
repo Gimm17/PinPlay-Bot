@@ -40,6 +40,35 @@ function _ensureOwner(interaction) {
   return interaction.user.id === config.discord.ownerId;
 }
 
+/**
+ * Resolve a "user" option from an interaction, supporting both Discord
+ * user mentions (slash) and raw 17-20 digit IDs (prefix commands store
+ * raw IDs in string options since PrefixContext doesn't resolve mentions).
+ *
+ * Returns the Discord User object if found via getUser(), or a synthetic
+ * `{ id }` object if only a raw ID was provided, or `null` if neither.
+ *
+ * Used by whitelist, userlimit, bonus, reset-limit, memory subcommands.
+ */
+function _resolveUser(interaction) {
+  let user = interaction.options.getUser("user");
+  if (user) return user;
+  const rawUser = interaction.options.getString("user");
+  if (rawUser && /^\d{17,20}$/.test(rawUser)) {
+    return { id: rawUser };
+  }
+  return null;
+}
+
+/**
+ * Send an ephemeral reply to the owner. All /ai-set subcommand replies
+ * are owner-only and ephemeral (flags:64) — keeps settings changes out
+ * of public chat. Pass an embed built with successEmbed/errorEmbed/infoEmbed.
+ */
+async function _replyEphemeral(interaction, embed) {
+  return interaction.reply({ embeds: [embed], flags: 64 });
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ai-set")
@@ -239,10 +268,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!_ensureOwner(interaction)) {
-      return interaction.reply({
-        embeds: [errorEmbed("⛔ Khusus owner bot.")],
-        flags: 64,
-      });
+      return _replyEphemeral(interaction, errorEmbed("⛔ Khusus owner bot."));
     }
 
     const sub = interaction.options.getSubcommand(true);
@@ -251,103 +277,73 @@ module.exports = {
     if (sub === "model") {
       const name = interaction.options.getString("name", true);
       if (!MODELS[name]) {
-        return interaction.reply({
-          embeds: [errorEmbed(`❌ Model "${name}" tidak dikenal. Pilih salah satu: ${MODEL_NAMES.join(", ")}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          errorEmbed(`❌ Model "${name}" tidak dikenal. Pilih salah satu: ${MODEL_NAMES.join(", ")}`)
+        );
       }
       const modelDef = MODELS[name];
       if (!isProviderAvailable(modelDef.provider)) {
         const keyName = modelDef.provider === "nvidia" ? "NVIDIA_API_KEY" : "TOKENROUTER_API_KEY";
-        return interaction.reply({
-          embeds: [errorEmbed(`❌ Model "${name}" butuh provider **${modelDef.provider}** tapi \`${keyName}\` belum di-set di .env.`)],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          errorEmbed(
+            `❌ Model "${name}" butuh provider **${modelDef.provider}** tapi \`${keyName}\` belum di-set di .env.`
+          )
+        );
       }
       aiSettings.setProvider(modelDef.provider);
       aiSettings.setModel(name);
-      return interaction.reply({
-        embeds: [
-          successEmbed(
-            `✅ Model diset ke **${modelDef.label}** (provider: **${modelDef.provider}**)\n` +
-              `📝 ${modelDef.description}`
-          ),
-        ],
-        flags: 64,
-      });
+      return _replyEphemeral(
+        interaction,
+        successEmbed(
+          `✅ Model diset ke **${modelDef.label}** (provider: **${modelDef.provider}**)\n` +
+            `📝 ${modelDef.description}`
+        )
+      );
     }
 
     // === limit ===
     if (sub === "limit") {
       const v = interaction.options.getInteger("value", true);
       aiSettings.setUserHourlyLimit(v);
-      return interaction.reply({
-        embeds: [successEmbed(`✅ Limit per-user/hour diset ke **${v}**`)],
-        flags: 64,
-      });
+      return _replyEphemeral(interaction, successEmbed(`✅ Limit per-user/hour diset ke **${v}**`));
     }
 
     // === whitelist ===
     if (sub === "whitelist") {
       const action = interaction.options.getString("action", true);
-      let user = interaction.options.getUser("user");
-      if (!user) {
-        const rawUser = interaction.options.getString("user");
-        if (rawUser && /^\d{17,20}$/.test(rawUser)) {
-          user = { id: rawUser };
-        }
-      }
+      const user = _resolveUser(interaction);
       if (action === "list") {
         const s = aiSettings.getAISettings();
         const list = Array.isArray(s.whitelist) ? s.whitelist : [];
         const pretty = list.length
           ? list.map((id) => `<@${id}>`).join("\n")
           : "Kosong.";
-        return interaction.reply({
-          embeds: [infoEmbed(`👥 **Chat Whitelist:**\n${pretty}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, infoEmbed(`👥 **Chat Whitelist:**\n${pretty}`));
       }
       if (!user) {
-        return interaction.reply({
-          embeds: [errorEmbed("❌ Pilih user dulu (untuk add/remove).")],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, errorEmbed("❌ Pilih user dulu (untuk add/remove)."));
       }
       if (action === "add") {
         aiSettings.addToWhitelist(user.id);
-        return interaction.reply({
-          embeds: [successEmbed(`✅ Ditambahkan ke whitelist: ${user}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, successEmbed(`✅ Ditambahkan ke whitelist: ${user}`));
       }
       if (action === "remove") {
         aiSettings.removeFromWhitelist(user.id);
-        return interaction.reply({
-          embeds: [successEmbed(`✅ Dihapus dari whitelist: ${user}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, successEmbed(`✅ Dihapus dari whitelist: ${user}`));
       }
     }
 
     // === userlimit ===
     if (sub === "userlimit") {
       const action = interaction.options.getString("action", true);
-      let user = interaction.options.getUser("user");
-      if (!user) {
-        const rawUser = interaction.options.getString("user");
-        if (rawUser && /^\d{17,20}$/.test(rawUser)) {
-          user = { id: rawUser };
-        }
-      }
+      const user = _resolveUser(interaction);
       const value = interaction.options.getInteger("value");
       if (action === "list") {
         const list = aiLimits.listLimitOverrides();
         if (!list.length) {
-          return interaction.reply({
-            embeds: [infoEmbed("📊 Belum ada user limit/bonus yang di-set.")],
-            flags: 64,
-          });
+          return _replyEphemeral(interaction, infoEmbed("📊 Belum ada user limit/bonus yang di-set."));
         }
         const lines = list
           .map((o) => {
@@ -357,57 +353,44 @@ module.exports = {
             return `• <@${o.userId}> → effective **${o.effective}**/jam (${bits.join(", ") || "base"})`;
           })
           .join("\n");
-        return interaction.reply({
-          embeds: [infoEmbed(`📊 **Per-user limits:**\n${lines}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, infoEmbed(`📊 **Per-user limits:**\n${lines}`));
       }
+      if (!user) return _replyEphemeral(interaction, errorEmbed("❌ Pilih user dulu."));
       if (action === "remove") {
-        if (!user) return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
         aiSettings.removeUserLimit(user.id);
-        return interaction.reply({
-          embeds: [successEmbed(`✅ User limit untuk ${user} dihapus.`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, successEmbed(`✅ User limit untuk ${user} dihapus.`));
       }
       // set
-      if (!user) return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
-      if (!value || value < 1) return interaction.reply({ embeds: [errorEmbed("❌ Value harus angka ≥ 1.")], flags: 64 });
+      if (!value || value < 1) return _replyEphemeral(interaction, errorEmbed("❌ Value harus angka ≥ 1."));
       aiSettings.setUserLimit(user.id, value);
-      return interaction.reply({
-        embeds: [successEmbed(`✅ ${user} sekarang punya limit **${value}**/jam (override global).`)],
-        flags: 64,
-      });
+      return _replyEphemeral(
+        interaction,
+        successEmbed(`✅ ${user} sekarang punya limit **${value}**/jam (override global).`)
+      );
     }
 
     // === bonus ===
     if (sub === "bonus") {
       const action = interaction.options.getString("action", true);
-      let user = interaction.options.getUser("user");
-      if (!user) {
-        const rawUser = interaction.options.getString("user");
-        if (rawUser && /^\d{17,20}$/.test(rawUser)) {
-          user = { id: rawUser };
-        }
-      }
+      const user = _resolveUser(interaction);
       const value = interaction.options.getInteger("value");
       if (action === "list") {
         const list = aiLimits.listLimitOverrides().filter((o) => o.bonus !== 0);
         if (!list.length) {
-          return interaction.reply({ embeds: [infoEmbed("📊 Belum ada bonus/penalty.")], flags: 64 });
+          return _replyEphemeral(interaction, infoEmbed("📊 Belum ada bonus/penalty."));
         }
         const lines = list
           .map((o) => `• <@${o.userId}> → bonus **${o.bonus > 0 ? "+" : ""}${o.bonus}** (effective: ${o.effective}/jam)`)
           .join("\n");
-        return interaction.reply({ embeds: [infoEmbed(`📊 **Bonus/Penalty:**\n${lines}`)], flags: 64 });
+        return _replyEphemeral(interaction, infoEmbed(`📊 **Bonus/Penalty:**\n${lines}`));
       }
-      if (!user) return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
+      if (!user) return _replyEphemeral(interaction, errorEmbed("❌ Pilih user dulu."));
       if (value === null || value === undefined) {
-        return interaction.reply({ embeds: [errorEmbed("❌ Value harus angka (boleh negatif).")], flags: 64 });
+        return _replyEphemeral(interaction, errorEmbed("❌ Value harus angka (boleh negatif)."));
       }
       if (action === "remove") {
         aiSettings.removeUserBonus(user.id);
-        return interaction.reply({ embeds: [successEmbed(`✅ Bonus untuk ${user} dihapus.`)], flags: 64 });
+        return _replyEphemeral(interaction, successEmbed(`✅ Bonus untuk ${user} dihapus.`));
       }
       if (action === "set") {
         aiSettings.setUserBonus(user.id, value);
@@ -419,87 +402,67 @@ module.exports = {
       const newS = aiSettings.getAISettings();
       const finalBonus = newS.userBonuses?.[user.id] || 0;
       const effective = aiLimits.getEffectiveLimit(user.id);
-      return interaction.reply({
-        embeds: [
-          successEmbed(
-            `✅ Bonus ${user} = **${finalBonus > 0 ? "+" : ""}${finalBonus}** (effective limit: **${effective}**/jam)`
-          ),
-        ],
-        flags: 64,
-      });
+      return _replyEphemeral(
+        interaction,
+        successEmbed(
+          `✅ Bonus ${user} = **${finalBonus > 0 ? "+" : ""}${finalBonus}** (effective limit: **${effective}**/jam)`
+        )
+      );
     }
 
     // === reset-limit ===
     if (sub === "reset-limit") {
       const target = interaction.options.getString("target");
-      // For prefix commands, getUser() returns null for raw IDs (only works on mention format).
-      // Use getString('user') as fallback for prefix-stored raw IDs.
-      let user = interaction.options.getUser("user");
-      if (!user) {
-        const rawUser = interaction.options.getString("user");
-        if (rawUser && /^\d{17,20}$/.test(rawUser)) {
-          user = { id: rawUser };
-        }
-      }
+      // getUser() returns null for raw IDs (only works on mention format);
+      // _resolveUser() also accepts a raw 17-20 digit ID via getString('user').
+      const user = _resolveUser(interaction);
 
       // Determine action: "all" > specific user > ambiguous (error)
       if (target === "all") {
         const n = aiLimits.resetAll();
-        return interaction.reply({
-          embeds: [successEmbed(`✅ Semua limit counter di-reset (**${n}** user) dari window aktif.`)],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(`✅ Semua limit counter di-reset (**${n}** user) dari window aktif.`)
+        );
       }
       if (user?.id) {
         const had = aiLimits.resetForUser(user.id);
-        return interaction.reply({
-          embeds: [
-            successEmbed(
-              had
-                ? `✅ Limit counter untuk <@${user.id}> di-reset.`
-                : `ℹ️ <@${user.id}> gak ada di window aktif (gak perlu reset).`
-            ),
-          ],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(
+            had
+              ? `✅ Limit counter untuk <@${user.id}> di-reset.`
+              : `ℹ️ <@${user.id}> gak ada di window aktif (gak perlu reset).`
+          )
+        );
       }
       if (target && /^\d{17,20}$/.test(target)) {
         // target option used as raw user ID
         const had = aiLimits.resetForUser(target);
-        return interaction.reply({
-          embeds: [
-            successEmbed(
-              had
-                ? `✅ Limit counter untuk <@${target}> di-reset.`
-                : `ℹ️ <@${target}> gak ada di window aktif (gak perlu reset).`
-            ),
-          ],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(
+            had
+              ? `✅ Limit counter untuk <@${target}> di-reset.`
+              : `ℹ️ <@${target}> gak ada di window aktif (gak perlu reset).`
+          )
+        );
       }
       // No valid input
-      return interaction.reply({
-        embeds: [
-          errorEmbed(
-            "❌ Specify user atau `all`.\n" +
-              "**Slash:** `/ai-set reset-limit target:all` atau `/ai-set reset-limit user:@user`\n" +
-              "**Prefix:** `.ais reset-limit all` atau `.ais reset-limit @user`"
-          ),
-        ],
-        flags: 64,
-      });
+      return _replyEphemeral(
+        interaction,
+        errorEmbed(
+          "❌ Specify user atau `all`.\n" +
+            "**Slash:** `/ai-set reset-limit target:all` atau `/ai-set reset-limit user:@user`\n" +
+            "**Prefix:** `.ais reset-limit all` atau `.ais reset-limit @user`"
+        )
+      );
     }
 
     // === memory ===
     if (sub === "memory") {
       const action = interaction.options.getString("action", true);
-      let user = interaction.options.getUser("user");
-      if (!user) {
-        const rawUser = interaction.options.getString("user");
-        if (rawUser && /^\d{17,20}$/.test(rawUser)) {
-          user = { id: rawUser };
-        }
-      }
+      const user = _resolveUser(interaction);
       const field = interaction.options.getString("field");
       const value = interaction.options.getString("value");
 
@@ -510,24 +473,27 @@ module.exports = {
             `**Vibe:** ${g.serverVibe || "_(kosong)_"}\n` +
             `**Common genres:** ${g.commonGenres?.length ? g.commonGenres.join(", ") : "_(kosong)_"}\n` +
             `**Owner notes:** ${g.ownerNotes || "_(kosong)_"}`;
-          return interaction.reply({ embeds: [infoEmbed(`🌍 **Global memory:**\n${txt}`)], flags: 64 });
+          return _replyEphemeral(interaction, infoEmbed(`🌍 **Global memory:**\n${txt}`));
         }
         // Store raw value into ownerNotes for now (simple, owner can edit later via direct file)
         aiMemory.setGlobalNotes(value);
-        return interaction.reply({ embeds: [successEmbed(`✅ Global notes diset: ${value.slice(0, 200)}`)], flags: 64 });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(`✅ Global notes diset: ${value.slice(0, 200)}`)
+        );
       }
 
       if (action === "clear") {
-        if (!user) return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
+        if (!user) return _replyEphemeral(interaction, errorEmbed("❌ Pilih user dulu."));
         aiMemory.clearUserMemory(user.id);
-        return interaction.reply({ embeds: [successEmbed(`✅ Memory ${user} di-reset.`)], flags: 64 });
+        return _replyEphemeral(interaction, successEmbed(`✅ Memory ${user} di-reset.`));
       }
 
       if (action === "view") {
         if (!user) {
           // List all
           const all = aiMemory.listUserMemories();
-          if (!all.length) return interaction.reply({ embeds: [infoEmbed("📭 Belum ada user memory.")], flags: 64 });
+          if (!all.length) return _replyEphemeral(interaction, infoEmbed("📭 Belum ada user memory."));
           const lines = all
             .slice(0, 20)
             .map(({ userId, profile }) => {
@@ -536,14 +502,14 @@ module.exports = {
               return `• <@${userId}>${tag} — ${facts} fact(s)`;
             })
             .join("\n");
-          return interaction.reply({ embeds: [infoEmbed(`🧠 **User memories (${all.length}):**\n${lines}`)], flags: 64 });
+          return _replyEphemeral(interaction, infoEmbed(`🧠 **User memories (${all.length}):**\n${lines}`));
         }
         const mem = aiMemory.getUserMemory(user.id);
         const hasContent =
           mem.nickname || mem.currentMood || mem.favoriteGenre?.length ||
           mem.favoriteArtist?.length || mem.interests?.length || mem.facts?.length;
         if (!hasContent) {
-          return interaction.reply({ embeds: [infoEmbed(`📭 ${user} belum punya memory.`)], flags: 64 });
+          return _replyEphemeral(interaction, infoEmbed(`📭 ${user} belum punya memory.`));
         }
         const lines = [
           mem.nickname && `**Nickname:** ${mem.nickname}`,
@@ -554,24 +520,31 @@ module.exports = {
           mem.facts?.length && `**Facts (${mem.facts.length}):**\n${mem.facts.slice(-10).map((f) => `  - ${f}`).join("\n")}`,
           mem.lastSeen && `**Last seen:** ${mem.lastSeen}`,
         ].filter(Boolean).join("\n");
-        return interaction.reply({ embeds: [infoEmbed(`🧠 **${user}**\n${lines}`)], flags: 64 });
+        return _replyEphemeral(interaction, infoEmbed(`🧠 **${user}**\n${lines}`));
       }
 
       // action === "set"
-      if (!user) return interaction.reply({ embeds: [errorEmbed("❌ Pilih user dulu.")], flags: 64 });
-      if (!field || !value) return interaction.reply({ embeds: [errorEmbed("❌ Field dan value wajib di-isi. Pisahkan array dengan koma.")], flags: 64 });
+      if (!user) return _replyEphemeral(interaction, errorEmbed("❌ Pilih user dulu."));
+      if (!field || !value) {
+        return _replyEphemeral(
+          interaction,
+          errorEmbed("❌ Field dan value wajib di-isi. Pisahkan array dengan koma.")
+        );
+      }
       const arr = ["favoriteGenre", "favoriteArtist", "interests"];
       const finalValue = arr.includes(field)
         ? value.split(",").map((s) => s.trim()).filter(Boolean)
         : value;
       try {
         aiMemory.setUserField(user.id, field, finalValue);
-        return interaction.reply({
-          embeds: [successEmbed(`✅ ${user} → **${field}** diset ke: \`${Array.isArray(finalValue) ? finalValue.join(", ") : finalValue}\``)],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(
+            `✅ ${user} → **${field}** diset ke: \`${Array.isArray(finalValue) ? finalValue.join(", ") : finalValue}\``
+          )
+        );
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed(`❌ ${e.message}`)], flags: 64 });
+        return _replyEphemeral(interaction, errorEmbed(`❌ ${e.message}`));
       }
     }
 
@@ -579,10 +552,10 @@ module.exports = {
     if (sub === "fallback") {
       const enabled = interaction.options.getBoolean("enabled", true);
       aiSettings.setFallbackEnabled(enabled);
-      return interaction.reply({
-        embeds: [successEmbed(`✅ Auto-fallback ke provider alternatif: **${enabled ? "ON" : "OFF"}**`)],
-        flags: 64,
-      });
+      return _replyEphemeral(
+        interaction,
+        successEmbed(`✅ Auto-fallback ke provider alternatif: **${enabled ? "ON" : "OFF"}**`)
+      );
     }
 
     // === cache ===
@@ -590,20 +563,20 @@ module.exports = {
       const action = interaction.options.getString("action", true);
       if (action === "stats") {
         const s = aiPromptCache.stats();
-        return interaction.reply({
-          embeds: [infoEmbed(
+        return _replyEphemeral(
+          interaction,
+          infoEmbed(
             `🗄️ **Prompt Cache:**\n` +
               `• Users cached: **${s.totalUsers}**\n` +
               `• Total entries: **${s.totalEntries}**\n` +
               `• Max per user: **${s.maxPerUser}**\n` +
               `• TTL: **${Math.round(s.ttlMs / 60000)} min**`
-          )],
-          flags: 64,
-        });
+          )
+        );
       }
       if (action === "clear") {
         aiPromptCache.clear();
-        return interaction.reply({ embeds: [successEmbed("✅ Prompt cache di-clear.")], flags: 64 });
+        return _replyEphemeral(interaction, successEmbed("✅ Prompt cache di-clear."));
       }
     }
 
@@ -611,10 +584,10 @@ module.exports = {
     if (sub === "limits") {
       const all = aiLimits.listAllLimits();
       if (all.length === 0) {
-        return interaction.reply({
-          embeds: [infoEmbed("📊 Belum ada user yang pakai AI dalam window 1 jam terakhir.")],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          infoEmbed("📊 Belum ada user yang pakai AI dalam window 1 jam terakhir.")
+        );
       }
       const statusEmoji = {
         "limit-exceeded": "🚫",
@@ -642,7 +615,7 @@ module.exports = {
           inline: false,
         })
         .setFooter({ text: "Window: 1 jam rolling. Pakai /ai-set reset-limit @user untuk clear counter." });
-      return interaction.reply({ embeds: [embed], flags: 64 });
+      return _replyEphemeral(interaction, embed);
     }
 
     // === tokens ===
@@ -655,41 +628,33 @@ module.exports = {
         const before = aiTokenUsage.getStats();
         const callsBefore = before.totals.calls;
         aiTokenUsage.resetStats();
-        return interaction.reply({
-          embeds: [
-            successEmbed(
-              `✅ Token usage di-reset.\n${callsBefore} call(s) sebelumnya di-clear. \`startedAt\` dipertahankan.`
-            ),
-          ],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          successEmbed(
+            `✅ Token usage di-reset.\n${callsBefore} call(s) sebelumnya di-clear. \`startedAt\` dipertahankan.`
+          )
+        );
       }
 
       if (action === "cost") {
         if (!modelKey || value === null || value === undefined) {
-          return interaction.reply({
-            embeds: [
-              errorEmbed(
-                "❌ Specify model + value.\n" +
-                  "**Slash:** `/ai-set tokens cost modelkey:MiniMax-M3 value:0.15`\n" +
-                  "**Prefix:** `.ais tokens cost MiniMax-M3 0.15`"
-              ),
-            ],
-            flags: 64,
-          });
+          return _replyEphemeral(
+            interaction,
+            errorEmbed(
+              "❌ Specify model + value.\n" +
+                "**Slash:** `/ai-set tokens cost modelkey:MiniMax-M3 value:0.15`\n" +
+                "**Prefix:** `.ais tokens cost MiniMax-M3 0.15`"
+            )
+          );
         }
         try {
           aiSettings.setCostPerMillion(modelKey, value);
-          return interaction.reply({
-            embeds: [
-              successEmbed(
-                `✅ Cost diset: \`${modelKey}\` = **$${value}/1M tokens**`
-              ),
-            ],
-            flags: 64,
-          });
+          return _replyEphemeral(
+            interaction,
+            successEmbed(`✅ Cost diset: \`${modelKey}\` = **$${value}/1M tokens**`)
+          );
         } catch (e) {
-          return interaction.reply({ embeds: [errorEmbed(`❌ ${e.message}`)], flags: 64 });
+          return _replyEphemeral(interaction, errorEmbed(`❌ ${e.message}`));
         }
       }
 
@@ -697,19 +662,16 @@ module.exports = {
         const costs = aiSettings.listCostPerMillion();
         const keys = Object.keys(costs);
         if (!keys.length) {
-          return interaction.reply({
-            embeds: [infoEmbed("📊 Belum ada cost rate yang diset. Semua model = $0 (free).")],
-            flags: 64,
-          });
+          return _replyEphemeral(
+            interaction,
+            infoEmbed("📊 Belum ada cost rate yang diset. Semua model = $0 (free).")
+          );
         }
         const lines = keys
           .sort()
           .map((k) => `• \`${k}\` = **$${costs[k]}/1M tokens**`)
           .join("\n");
-        return interaction.reply({
-          embeds: [infoEmbed(`💰 **Cost rates:**\n${lines}`)],
-          flags: 64,
-        });
+        return _replyEphemeral(interaction, infoEmbed(`💰 **Cost rates:**\n${lines}`));
       }
 
       // action === "stats"
@@ -720,10 +682,10 @@ module.exports = {
       const estCost = aiTokenUsage.getEstimatedCost();
 
       if (stats.totals.calls === 0) {
-        return interaction.reply({
-          embeds: [infoEmbed("📊 Belum ada token usage yang tercatat. Jalankan /chat, /roast, atau /aiplaylist dulu.")],
-          flags: 64,
-        });
+        return _replyEphemeral(
+          interaction,
+          infoEmbed("📊 Belum ada token usage yang tercatat. Jalankan /chat, /roast, atau /aiplaylist dulu.")
+        );
       }
 
       // Build provider lines
@@ -780,7 +742,7 @@ module.exports = {
         .setFooter({
           text: `Started: ${stats.startedAt?.slice(0, 19) || "?"} • Last: ${stats.lastUpdated?.slice(0, 19) || "?"} • Cache hits = 0 tokens (no API call)`,
         });
-      return interaction.reply({ embeds: [embed], flags: 64 });
+      return _replyEphemeral(interaction, embed);
     }
 
     // === view ===
@@ -857,6 +819,6 @@ module.exports = {
         text: `Model berlaku untuk /chat, /aiplaylist, /roast • Setting di data/aiSettings.json`,
       });
 
-    return interaction.reply({ embeds: [embed], flags: 64 });
+    return _replyEphemeral(interaction, embed);
   },
 };
