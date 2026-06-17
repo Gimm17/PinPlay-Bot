@@ -244,6 +244,29 @@ throw lastErr;
 
 `REVIEW_NOTES.md` updated locally to mark this as ✅ resolved.
 
+### Fixed - Concern #8 (aiplaylist response style consistency)
+
+#### Context
+
+Per `REVIEW_NOTES.md` concern #8: `/aiplaylist` punya mixed response style untuk early-exit paths. Rate limit check pakai `interaction.reply(ephemeral)` tapi voice check pakai `interaction.reply(non-ephemeral)`. Slash without query juga non-ephemeral. Inconsistent UX — user gak bisa predict apakah error akan visible ke orang lain.
+
+#### Fix
+
+Reorganize `execute()` di `src/commands/aiplaylist.js` biar response style **konsisten secara semantik**:
+
+| Path | Style | Rationale |
+|---|---|---|
+| AI not available | ephemeral (flags:64) | Self-service check, no need untuk publik |
+| Rate limit exceeded | ephemeral (flags:64) | Personal limit, no public spam |
+| No voice channel | ephemeral (flags:64) | Personal issue |
+| With query | `deferReply` + editReply | Heavy work, butuh status updates |
+| Slash no query | ephemeral (flags:64) | Hint to caller, no public noise |
+| Prefix no query | non-ephemeral (collector needs visible prompt) | User perlu lihat prompt buat reply |
+
+Prinsip yang dipake: **ephemeral untuk self-service checks & hints, non-ephemeral untuk prompts yang butuh user action** (message collector). Heavy work (deferred) tetep non-ephemeral karena user butuh liat status "AI lagi mikir...".
+
+Also removed a chunk of dead duplicate code yang kebawa dari refactor sebelumnya (lines 354-399 old version).
+
 ### Changed - Race Condition Documentation & Test Helper
 
 #### Context
