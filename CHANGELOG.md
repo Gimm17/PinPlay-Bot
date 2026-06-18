@@ -24,9 +24,9 @@ Auto-add related tracks when queue ends. Toggleable per-guild.
 
 #### Commands
 
-- `/autoplay on|off|status` (slash) — ephemeral replies
-- `.autoplay on|off|status` (prefix) — public replies
-- `/autoplay off` to disable; state persists in `data/guildSettings.json` (`autoplayOn: bool`)
+- `/autoplay` (slash) — simple toggle, no subcommands; ephemeral reply confirms new state
+- `.autoplay` (prefix) — same toggle behavior
+- State persists in `data/guildSettings.json` (`autoplayOn: bool`)
 
 #### Files
 
