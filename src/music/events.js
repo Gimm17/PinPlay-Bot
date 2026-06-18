@@ -135,22 +135,38 @@ function attachMusicEvents(client) {
       allowedMentions: { parse: [] },
     }).catch((e) => log.warn("Started playing send failed:", e?.message || e));
 
-    // Autoplay hook
-    if (getAutoplayOn(player.guildId)) {
-      const { fetchRelated, resetCooldown } = require("../utils/autoplay");
-      resetCooldown(player.guildId); // user just played something, reset any stale cooldown
-      fetchRelated(player, track).catch(err => {
-        log.error(`[autoplay] unhandled error in playerStart: ${err.message}`);
-      });
-    }
+    // Autoplay hook intentionally REMOVED from playerStart.
+    // Reason: playerStart fires when a track BEGINS, but the autoplay spec
+    // is "auto-add related tracks WHEN QUEUE ENDS". If the user enables
+    // autoplay after a track has already started, this hook would never
+    // fire for the current playing track — so nothing gets prefetched.
+    // The hook is now in playerEnd (with queue.size === 0 guard), which
+    // fires exactly when the last track finishes and the queue is about
+    // to become empty.
   });
 
-  kazagumo.on("playerEnd", async (player) => {
+  kazagumo.on("playerEnd", async (player, track) => {
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
       log.warn("updatePanel failed (playerEnd):", e?.message || e);
     }
+
+    // Autoplay hook: only when the queue will become empty after this track.
+    // - getAutoplayOn(): per-guild toggle must be on
+    // - player.queue.size === 0: this was the LAST track (no more after it)
+    // - track: kazagumo passes the finished track as 2nd arg (see
+    //   node_modules/kazagumo/.../KazagumoPlayer.js:93)
+    if (getAutoplayOn(player.guildId) && player.queue.size === 0 && track) {
+      log.info(
+        `[autoplay] playerEnd fired (queue empty), fetching related for "${track.title}"`
+      );
+      const { fetchRelated } = require("../utils/autoplay");
+      fetchRelated(player, track).catch((err) => {
+        log.error(`[autoplay] unhandled error in playerEnd: ${err.message}`);
+      });
+    }
+
     scheduleLeave(player);
   });
 

@@ -31,14 +31,17 @@ Expected: bot logs `Logged in as ...`, no autoplay-related errors on startup.
 1. Join voice channel
 2. Run `/autoplay on` → expect ephemeral "✅ Autoplay enabled"
 3. Run `/play <spotify track url>` (e.g., a popular song like https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh)
-4. Wait for track to finish
-5. **Observe terminal logs:**
+4. Wait for track to finish (queue must be empty — only one track in queue)
+5. **Observe terminal logs (in order):**
+   - `[autoplay] playerEnd fired (queue empty), fetching related for "..."` ← trigger
    - `[autoplay] fetch from spotify for "..."`
    - `[autoplay] added to queue: "..." (source=spotify)`
 6. **Observe channel:**
    - One-time message: `🎵 **Autoplay started** — adding related tracks based on "..."`
-7. **Verify:** New track auto-plays after current finishes
+7. **Verify:** New track auto-plays after current finishes (the new track is a `playerStart`, which fires the embedded "Now Playing" message)
 8. **Verify:** Panel footer shows `🎵 Autoplay (spotify)`
+
+> **Why `playerEnd`, not `playerStart`?** Autoplay is "auto-add related tracks when queue ends" — so the trigger has to fire when the queue is about to become empty, not when a track starts. If autoplay is enabled AFTER a track has already started, the `playerStart` hook would never fire for the current track (the trigger moment already passed). Hooking `playerEnd` with `player.queue.size === 0` guard fires exactly at the right moment.
 
 ### Test B: Fallback to YouTube
 1. Edit `.env`: empty SPOTIFY_CLIENT_ID (or comment out)
@@ -84,6 +87,7 @@ Expected: bot logs `Logged in as ...`, no autoplay-related errors on startup.
 |-------|----------|
 | Toggle on | `[autoplay] enabled for guild {id}` |
 | Toggle off | `[autoplay] disabled for guild {id}` |
+| **Trigger fired** | `[autoplay] playerEnd fired (queue empty), fetching related for "{title}"` |
 | Spotify fetch | `[autoplay] fetch from spotify for "{title}"` |
 | Spotify fail | `[autoplay] spotify fetch failed: {err}, trying youtube` |
 | YouTube fetch | `[autoplay] fetch from youtube for "{title}"` |
@@ -92,13 +96,14 @@ Expected: bot logs `Logged in as ...`, no autoplay-related errors on startup.
 | Cooldown skip | `[autoplay] cooldown active, skipping fetch (guild={id}, remaining={sec}s)` |
 | Success | `[autoplay] added to queue: "{title}" (source={source})` |
 | Notify fail | `[autoplay] failed to send notify: {err}` |
+| Unhandled error | `[autoplay] unhandled error in playerEnd: {err}` |
 
 ## Failure Triage
 
 | Issue | Likely Cause | Fix |
 |-------|--------------|-----|
 | Command not found in Discord | Not deployed or cache not refreshed | `npm run deploy:guild`, wait 5 min |
-| No log on playerStart | Autoplay not enabled | `/autoplay on` |
+| No `[autoplay] playerEnd fired` log after track finishes | Autoplay not enabled OR queue not empty when track ended (other tracks in queue) | `/autoplay on`, make sure queue is empty when test track ends |
 | `no kazagumo instance` warning | Player not fully initialized | Should be rare; check kazagumo is started in index.js |
 | `both sources failed` repeatedly | Lavalink down OR no results | Check Lavalink logs, try `/play` manually first |
 | State not persisting | `data/guildSettings.json` not writable | Check file permissions |
