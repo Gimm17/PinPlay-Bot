@@ -64,22 +64,22 @@ Expected: bot logs `Logged in as ...`, no autoplay-related errors on startup.
 6. Try `/play` again immediately → log shows `[autoplay] cooldown active, skipping fetch`
 7. Wait 30s, `/play` again → see retry attempt
 
-### Test D: /autoplay off
-1. `/autoplay off` → expect ephemeral "❌ Autoplay disabled"
+### Test D: Toggle off
+1. `/autoplay` (while currently ON) → expect ephemeral "❌ Autoplay disabled"
 2. Let current track finish
 3. **Verify:** NO new track auto-added (queue empty, bot leaves after 120s default timeout)
-4. `/autoplay status` → expect "Autoplay is **OFF** for this server"
 
-### Test E: Prefix command
-1. Type `.autoplay on` → expect reply "✅ Autoplay enabled — adding related tracks when queue ends"
-2. Type `.autoplay status` → expect "Autoplay is **ON** for this server"
-3. Type `.autoplay off` → expect "❌ Autoplay disabled"
-4. Type `.autoplay invalid` → expect error "Invalid action. Must be one of: on, off, status"
+### Test E: Prefix command (toggle)
+1. Type `.autoplay` (while OFF) → expect reply "✅ Autoplay enabled — adding related tracks when queue ends"
+2. Type `.autoplay` again → expect "❌ Autoplay disabled" (toggled OFF)
+3. Type `.autoplay` one more time → expect "✅ Autoplay enabled" (toggled ON again)
 
 ### Test F: Persistence
-1. `/autoplay on`
+1. `/autoplay` (toggle ON)
 2. Restart bot (Ctrl+C, npm start)
-3. `/autoplay status` → should show "ON" (state persisted in `data/guildSettings.json`)
+3. `/autoplay` (toggles back OFF, confirming previous state was ON since the reply is "disabled")
+
+> **Note:** There is no `/autoplay status` subcommand anymore — autoplay is now a single-toggle command with no arguments. To check the current state, inspect `data/guildSettings.json` → `autoplayOn` field, or call `/autoplay` (it'll flip whatever the current state is).
 
 ## Log Reference (Expected Outputs)
 
