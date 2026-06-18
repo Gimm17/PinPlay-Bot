@@ -183,6 +183,23 @@ async function fetchRelated(player, currentTrack) {
   player.queue.add(track);
   logger.info(`[autoplay] added to queue: "${track.title}" (source=${source})`);
 
+  // Kick off playback. player.queue.add() alone doesn't start the player —
+  // the player only auto-advances via the 'end' shoukaku event when a track
+  // is already playing. Since this hook fires on playerEnd (player is now
+  // idle), we have to explicitly call play() so the new track actually
+  // starts. Pattern matches src/commands/play.js:124,194.
+  try {
+    if (!player.playing && !player.paused) {
+      await player.play();
+      logger.info(`[autoplay] resumed playback with "${track.title}"`);
+    }
+  } catch (playErr) {
+    // Don't let a play() failure mask the successful queue.add — we did our
+    // job (got a related track in the queue), play() rejection is usually
+    // "Player is already destroyed" (race with scheduleLeave) and unrecoverable.
+    logger.warn(`[autoplay] player.play() failed after queue.add: ${playErr.message}`);
+  }
+
   // One-time notify per session
   if (!_notifiedThisSession.has(guildId)) {
     _notifiedThisSession.add(guildId);
