@@ -112,20 +112,31 @@ client.once("clientReady", async () => {
   // Lavalink goes down while the bot is already running, Shoukaku exhausts its
   // finite retries and gives up for good — the bot keeps serving Discord but
   // every /play fails with "No node found" until someone restarts it manually.
-  // Observed in practice: a Lavalink restart took ~40s, the bot burned its
-  // retries inside that window, and playback stayed broken afterwards.
   //
-  // So poll the port and re-add the node whenever it disappears. Cheap (one TCP
-  // connect per interval), and it makes the pair self-healing either way round.
+  // IMPORTANT: only re-add the node when it is GONE from the Map (state was
+  // fully removed — i.e. Shoukaku gave up reconnecting). Do NOT remove+re-add
+  // just because `node.state !== CONNECTED` — that races Shoukaku's own
+  // reconnect, closes the WebSocket mid-session (destroying the Lavalink
+  // player → "track shows but no sound"), and re-opens zombie connections that
+  // pile up on the Lavalink side. Observed in production: a node still in
+  // DISCONNECTED/CONNECTING state got force-cycled every 30s, killing every
+  // playback while the bot stayed "online".
+  //
+  // So: if the node object exists at all, leave it alone (Shoukaku is either
+  // connected or mid-reconnect — both correct states). Only re-register when the
+  // Map no longer has the node AND the port is back up.
   const { waitForLavalinkPort, connectLavalink } = require("./music/kazagumo");
   const WATCHDOG_MS = 30_000;
   const watchdog = setInterval(async () => {
     try {
       const sh = client.kazagumo?.shoukaku;
       const node = sh?.nodes?.get(config.lavalink.name);
-      // State 1 = CONNECTED (see SHOUKKU_STATE in src/dashboard/api.js)
-      if (node && node.state === 1) return;
+      // Node object still tracked → Shoukaku owns it (connected or
+      // reconnecting). Touching it here destroys the audio session.
+      if (node) return;
 
+      // Node is gone (Shoukaku gave up). Only re-add once the port is back, so
+      // we don't dial a dead server.
       const up = await waitForLavalinkPort(
         config.lavalink.host,
         config.lavalink.port,
@@ -133,8 +144,7 @@ client.once("clientReady", async () => {
       );
       if (!up) return; // still down; try again next tick
 
-      log.warn("⚠️ Lavalink came back but the node is not connected — re-registering.");
-      if (sh?.nodes?.get(config.lavalink.name)) sh.removeNode(config.lavalink.name);
+      log.warn("⚠️ Lavalink node gone but port is back up — re-registering.");
       if (connectLavalink(client.kazagumo)) {
         log.info(`🔗 Lavalink node "${config.lavalink.name}" re-registered`);
       }
