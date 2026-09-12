@@ -72,8 +72,25 @@ setInterval(() => {
 
 /**
  * [PRIORITAS 1] Mendapatkan token via OAuth Refresh Token.
- * Token ini bersifat user-level sehingga bisa membaca SEMUA playlist publik.
  * Setup sekali dengan: node scripts/spotify-oauth.js
+ *
+ * CAKUPAN SEBENARNYA (diverifikasi 2026-09-12, bukan dari dokumentasi lama):
+ * Komentar ini dulu bilang token ini "bisa membaca SEMUA playlist publik".
+ * Itu SUDAH TIDAK BENAR. Sejak perubahan Spotify Development Mode (Feb 2026):
+ *   "Playlist contents (items) are only returned for playlists the user owns
+ *    or collaborates on. For other playlists, only metadata is returned."
+ *
+ * Diuji langsung: /playlists/{id}/tracks untuk playlist milik akun LAIN
+ * mengembalikan 403 dengan refresh token DAN dengan client credentials —
+ * hasilnya identik. Metadata playlist-nya tetap 200.
+ *
+ * Jadi refresh token HANYA menambah akses ke playlist yang dimiliki/di-collab
+ * oleh akun yang dipakai saat OAuth. Kalau akun itu tidak punya playlist,
+ * token ini tidak menambah kemampuan apa pun dibanding client credentials.
+ *
+ * Catatan migrasi: /playlists/{id}/tracks -> /playlists/{id}/items, dan field
+ * `tracks` -> `items`. Endpoint lama masih merespons (403, bukan 404), jadi
+ * belum rusak, tapi ini jalur yang diperkirakan akan dimatikan Spotify.
  */
 async function getTokenViaRefreshToken() {
   const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
@@ -117,7 +134,12 @@ async function getTokenViaRefreshToken() {
 
 /**
  * [PRIORITAS 2] Mendapatkan token via Client ID & Secret (OAuth2 Client Credentials).
- * Hanya bisa akses data publik umum (track, album). Playlist milik orang lain = 403.
+ * Hanya bisa akses data publik umum (track, album).
+ *
+ * Catatan: baris ini dulu berbunyi "Playlist milik orang lain = 403" — seolah
+ * refresh token (PRIORITAS 1) memperbaikinya. TIDAK LAGI. Playlist milik akun
+ * lain kini 403 untuk KEDUA jenis token (lihat penjelasan di
+ * getTokenViaRefreshToken). Batasnya ada di Spotify, bukan di jenis token.
  */
 async function getTokenViaClientCredentials() {
   if (!config.spotify?.clientId || !config.spotify?.clientSecret) return null;
