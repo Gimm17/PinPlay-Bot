@@ -1,0 +1,74 @@
+# Lavalink v4 configuration — TEMPLATE (safe to commit).
+#
+# Secrets are NOT stored here. They are read from environment variables, which
+# Lavalink resolves as a Spring Boot application (verified empirically: the
+# substituted value authenticates, while the literal "${VAR}" text does not).
+#
+# Set these in the environment BEFORE starting Lavalink — for PM2 either in the
+# bot's .env plus `--update-env`, or directly in the pm2 ecosystem file:
+#   SPOTIFY_CLIENT_ID      Spotify app client id
+#   SPOTIFY_CLIENT_SECRET  Spotify app client secret
+#   SPOTIFY_SP_DC          optional sp_dc cookie (personal account — see note)
+#   LAVALINK_PASSWORD      must match LAVALINK_PASSWORD in the bot's .env
+#
+# The live file with real values lives OUTSIDE the repo at ../PinPlay-Lavalink/.
+
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  server:
+    # Keep this in sync with LAVALINK_PASSWORD in the bot's .env
+    password: "${LAVALINK_PASSWORD}"
+    sources:
+      # Lavalink default YouTube source is deprecated; we use the YouTube plugin instead.
+      youtube: false
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+
+  # Plugins can be auto-downloaded by adding dependencies here (supported by Lavalink v4)
+  plugins:
+    # YouTube source plugin (replace version if a newer one exists)
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
+      repository: "https://maven.lavalink.dev/releases"
+
+    # Spotify / Apple Music / Deezer support (LavaSrc)
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
+
+plugins:
+  youtube:
+    enabled: true
+    # Urutan client = urutan fallback. Nama client HARUS valid sesuai plugin.
+    # IOS & ANDROID_VR sering jalan tanpa butuh cipher/sig extraction
+    # (sumber error "Must find sig function").
+    clients:
+      - MUSIC
+      - IOS
+      - ANDROID_VR
+      - WEB
+  lavasrc:
+    providers:
+      - 'ytsearch:"%ISRC%"'
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+    spotify:
+      # Client credentials come from env — never hardcode them here.
+      clientId: "${SPOTIFY_CLIENT_ID}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET}"
+      # spDc is the sp_dc cookie of a PERSONAL Spotify account, used only for the
+      # lyrics endpoint. Rotating it logs that account's session out; treat it as
+      # a credential. Leave empty to disable lyrics; Spotify playback still works
+      # with clientId/clientSecret alone.
+      spDc: "${SPOTIFY_SP_DC:}"
+      countryCode: "ID"
+      playlistLoadLimit: 100
+      albumLoadLimit: 50
