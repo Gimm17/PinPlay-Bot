@@ -51,6 +51,7 @@ const log = makeLogger(config.logLevel);
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const MAX_HISTORY = 20; // keep last N user/assistant PAIRS (i.e. 40 messages)
+const MAX_HISTORY_CHARS = 12_000; // ~3k tokens of history, regardless of message count (H3)
 
 // Streaming chunks: if response > CHUNK_THRESHOLD chars, edit once at half
 const CHUNK_THRESHOLD = 1500;
@@ -103,6 +104,20 @@ function _pushHistory(session, userText, assistantText) {
   if (session.messages.length > MAX_HISTORY * 2) {
     session.messages = session.messages.slice(-MAX_HISTORY * 2);
   }
+
+  // H3 (audit): MAX_HISTORY caps message COUNT, not tokens. Every assistant turn
+  // is generated with maxTokens: 1024, so a full 40-message window is roughly
+  // 20 x 1024 tokens of history resent on EVERY call - and every turn is only a
+  // 10-minute reply away, so the window stays full indefinitely. Cost grew ~20x
+  // from the first turn to the twentieth while the user saw "one message = one
+  // request". Character count is a good enough token proxy (no tokenizer needed).
+  // Drops oldest PAIRS so a user turn is never orphaned from its reply.
+  let chars = session.messages.reduce((n, m) => n + (m.content?.length || 0), 0);
+  while (chars > MAX_HISTORY_CHARS && session.messages.length > 2) {
+    const [a, b] = session.messages.splice(0, 2);
+    chars -= (a.content?.length || 0) + (b.content?.length || 0);
+  }
+
   session.lastActive = Date.now();
 }
 
