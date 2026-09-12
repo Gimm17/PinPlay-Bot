@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, ActivityType } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, ActivityType, Options } = require("discord.js");
 const { config } = require("./config");
 
 const { loadCommands } = require("./handlers/commandLoader");
@@ -20,6 +20,30 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Channel],
+
+  // H1 (audit): never let bot output resolve a mention. AI output is fed
+  // attacker-controlled text (song titles flow straight into the /roast prompt
+  // at temperature 0.9), so without this a track named "@everyone lol" can make
+  // the bot ping the whole server. `parse: []` blocks all @everyone/@here/role
+  // pings; `users: []` still honours an explicit <@id> for the roast requester.
+  allowedMentions: { parse: [], users: [], repliedUser: true },
+
+  // M1 (audit): the bot only ever reacts to live messages and fetches the panel
+  // by id, so it never reads historical messages from cache — 200 full Message
+  // objects per channel were pure waste and the single largest memory consumer
+  // on a small VPS.
+  makeCache: Options.cacheWithLimits({
+    ...Options.DefaultMakeCacheSettings,
+    MessageManager: 50,
+    GuildMemberManager: 200,
+    UserManager: 200,
+  }),
+  // `lifetime` is only valid for invites/messages/threads (see SweeperDefinitions)
+  // — a `lifetime` on `users` would be ignored. Bound the cache by size instead.
+  sweepers: {
+    ...Options.DefaultSweeperSettings,
+    messages: { interval: 3600, lifetime: 1800 },
+  },
 });
 
 const { SearchCache } = require("./utils/searchCache");
