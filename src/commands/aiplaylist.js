@@ -260,7 +260,7 @@ module.exports = {
     const isPrefix = typeof interaction.isChatInputCommand !== "function";
 
     // === Rate limit check (shared across all AI features) ===
-    // `/aiplaylist` is in the FREE_COMMANDS set — unlimited, doesn't consume a slot.
+    // Counts against the hourly quota, same as /chat and /roast.
     // Ephemeral reply (flags:64) since this is a self-service check —
     // doesn't need to be visible to other channel members.
     const rl = aiLimits.checkAndIncrement(interaction.user.id, "aiplaylist");

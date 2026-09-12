@@ -97,7 +97,9 @@ module.exports = {
     }
 
     // === Rate limit check (shared across all AI features) ===
-    // `/roast` is in the FREE_COMMANDS set — unlimited, doesn't consume a slot.
+    // Counts against the hourly quota. Note this runs BEFORE the cache lookup
+    // below, so a cache hit (same track roasted twice inside the 1h TTL) still
+    // consumes a slot even though it makes no API call.
     const rl = aiLimits.checkAndIncrement(interaction.user.id, "roast");
     if (!rl.allowed) {
       const mins = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
