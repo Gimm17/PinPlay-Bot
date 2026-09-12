@@ -16,16 +16,10 @@ function attachInteractionHandler(client) {
   const log = makeLogger(config.logLevel);
 
   client.on("interactionCreate", async (interaction) => {
-    // Check rate limit first
-    const { limited, retryAfterMs } = rateLimiter.check(interaction.user.id);
-    if (limited && !isAdmin(interaction)) {
-      const secs = Math.ceil(retryAfterMs / 1000);
-      return interaction.reply({
-        content: `⏳ Terlalu cepat! Tunggu **${secs} detik** lagi.`,
-        flags: 64
-      }).catch(() => null);
-    }
-
+    // H7 (audit): rate limiting used to run here, before the interaction type was
+    // even known — so every panel button click burned a hit. With maxHits=3/5s,
+    // pressing the panel 4 times in 5s throttled the user, making the primary UI
+    // feel broken. It now runs only for slash commands, further down.
     try {
       // Buttons
       if (interaction.isButton()) {
@@ -115,8 +109,17 @@ function attachInteractionHandler(client) {
         }
       }
 
-      // Slash commands
+      // Slash commands — the only interaction type that is rate limited.
       if (!interaction.isChatInputCommand()) return;
+
+      const { limited, retryAfterMs } = rateLimiter.check(interaction.user.id);
+      if (limited && !isAdmin(interaction)) {
+        const secs = Math.ceil(retryAfterMs / 1000);
+        return interaction.reply({
+          content: `⏳ Terlalu cepat! Tunggu **${secs} detik** lagi.`,
+          flags: 64,
+        }).catch(() => null);
+      }
 
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
