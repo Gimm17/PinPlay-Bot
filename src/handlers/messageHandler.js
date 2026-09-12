@@ -8,15 +8,12 @@
 const { PREFIX_ALIASES, parsePrefixArgs } = require("../config/prefixAliases");
 const { PrefixContext } = require("../adapters/PrefixContext");
 const { PrefixOptions } = require("../adapters/PrefixOptions");
-const { RateLimiter } = require("../utils/rateLimiter");
+const { shared: rateLimiter } = require("../utils/rateLimiter");
 const { isAdmin } = require("../utils/permissions");
 const { config } = require("../config");
 const { makeLogger } = require("../utils/logger");
 
 const log = makeLogger(config.logLevel);
-
-// Reuse rate limiter dari interaction handler
-const rateLimiter = new RateLimiter();
 
 /**
  * Attach message handler ke client
