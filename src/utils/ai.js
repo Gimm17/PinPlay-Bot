@@ -283,14 +283,15 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
     }
 
     // Capture token usage (silent on failure — never break user flow).
-    // Use the user-facing model key (opts.model) if present, otherwise
-    // fall back to the resolved apiName. This keeps /ai-set view clean
-    // ("llama-3.3-70b" not "meta/llama-3.3-70b-instruct").
+    // Use the user-facing model key if present, otherwise fall back to the
+    // resolved apiName. This keeps /ai-set view clean ("llama-3.3-70b" not
+    // "meta/llama-3.3-70b-instruct"). NOTE: `model` is the destructured
+    // parameter — there is no `opts` binding in this scope.
     if (completion?.usage) {
       try {
         aiTokenUsage.recordUsage({
           provider: providerName,
-          model: opts.model || resolvedModel,
+          model: model || resolvedModel,
           source: _source || "unknown",
           usage: completion.usage,
         });
