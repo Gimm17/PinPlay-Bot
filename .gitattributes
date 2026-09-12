@@ -1,0 +1,26 @@
+# Line-ending policy.
+#
+# Why this exists: the repo has core.autocrlf=true and is edited on Windows.
+# A shell script checked out (or re-committed) with CRLF fails on Linux with
+#   bash: ./deploy.sh: /bin/bash^M: bad interpreter: No such file or directory
+# which is a confusing failure to debug on a fresh VPS. Pinning these to LF
+# means deploy.sh behaves the same no matter which machine touched it last.
+#
+# Only the extensions that actually break are listed — a broad `* text=auto`
+# would rewrite the whole tree for no benefit.
+
+# Shell scripts are executed by Linux (deploy.sh on the VPS).
+*.sh text eol=lf
+
+# This file itself — it warned about CRLF on its own first commit.
+.gitattributes text eol=lf
+
+# YAML is read by Lavalink (Java) on Linux; LF avoids any parser surprises.
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Explicitly mark the binary assets so Git never attempts text conversion.
+*.jar binary
+*.png binary
+*.jpg binary
+*.ico binary

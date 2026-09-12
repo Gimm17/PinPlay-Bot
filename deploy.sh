@@ -70,11 +70,30 @@ else
     echo -e "${GREEN}  ✅ 2 GB swap created${NC}"
 fi
 
-# ── 6. Open Firewall ──
+# ── 6. Firewall ──
+# Only SSH is opened. Lavalink's port 2333 is deliberately NOT exposed: the bot
+# runs on this same machine and reaches Lavalink over loopback, so there is no
+# reason to accept 2333 from the internet. Exposing it (as this script used to)
+# let anyone who knew the IP talk to Lavalink directly.
 echo ""
-echo -e "${YELLOW}[6/7]${NC} Opening firewall ports..."
-sudo iptables -I INPUT 1 -p tcp --dport 2333 -j ACCEPT 2>/dev/null || true
+echo -e "${YELLOW}[6/7]${NC} Configuring firewall (SSH only)..."
 sudo iptables -I INPUT 1 -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
+# Prune the old wide-open Lavalink rule if a previous run added it.
+# Bounded rather than `while ...; do :; done` — a loop that only exits when
+# iptables fails would spin for a long time if sudo is misconfigured.
+for _ in 1 2 3 4 5; do
+  sudo iptables -D INPUT -p tcp --dport 2333 -j ACCEPT 2>/dev/null || break
+done
+
+# Refuse 2333 from anywhere but loopback.
+# INSERTED (not appended) and in explicit positions: Oracle's Ubuntu image ends
+# its INPUT chain with a catch-all REJECT, so an appended rule would land after
+# it and never be evaluated — the guard would silently do nothing. Position 1 =
+# allow loopback, position 2 = drop the rest, so the order is deterministic.
+sudo iptables -D INPUT -p tcp --dport 2333 -j DROP 2>/dev/null || true
+sudo iptables -D INPUT -s 127.0.0.1 -p tcp --dport 2333 -j ACCEPT 2>/dev/null || true
+sudo iptables -I INPUT 1 -s 127.0.0.1 -p tcp --dport 2333 -j ACCEPT 2>/dev/null || true
+sudo iptables -I INPUT 2 -p tcp --dport 2333 -j DROP 2>/dev/null || true
 
 # Persist iptables (Oracle Ubuntu uses iptables-persistent or netfilter-persistent)
 if command -v netfilter-persistent &> /dev/null; then
@@ -117,11 +136,58 @@ pm2 delete pinplay 2>/dev/null || true
 # ── Start Lavalink ──
 echo ""
 echo -e "${CYAN}  Starting Lavalink...${NC}"
+
+# Lavalink's application.yml reads its password and Spotify credentials from the
+# environment (${LAVALINK_PASSWORD}, ${SPOTIFY_CLIENT_ID}, ${SPOTIFY_CLIENT_SECRET})
+# so secrets never live in the versioned config. Those variables must therefore
+# be in the environment of the LAVALINK process — the bot's .env is the single
+# source of truth on this box, so export the ones Lavalink needs before handing
+# it to pm2.
+#
+# Values are extracted with grep rather than `source`d: sourcing executes the
+# file as shell, so a stray `$(...)` or backtick in any value would run.
+read_env() {
+  local key="$1" file="$2"
+  [ -f "$file" ] || return 0
+  sed -n "s/^[[:space:]]*${key}=//p" "$file" | tail -1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+for key in LAVALINK_PASSWORD SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET SPOTIFY_SP_DC; do
+  val="$(read_env "$key" "$BOT_DIR/.env")"
+  if [ -n "$val" ]; then
+    export "$key=$val"
+  fi
+done
+
+if [ -z "$LAVALINK_PASSWORD" ]; then
+  echo -e "${RED}  ⚠️  LAVALINK_PASSWORD is empty in $BOT_DIR/.env${NC}"
+  echo -e "${RED}     Lavalink will refuse to start without it.${NC}"
+  exit 1
+fi
+echo -e "${GREEN}  ✅ Lavalink environment loaded from .env${NC}"
+
 pm2 start "java -jar Lavalink.jar" --name lavalink --cwd "$LAVA_DIR"
 
-# Wait for Lavalink to initialize
-echo -e "${CYAN}  Waiting 10s for Lavalink to start...${NC}"
-sleep 10
+# Wait for Lavalink to actually accept connections.
+# A fixed `sleep 10` was not enough — measured startup is ~33-40s on a cold JVM
+# (plugin loading dominates), so the bot was starting against a dead node.
+echo -e "${CYAN}  Waiting for Lavalink to become ready (up to 90s)...${NC}"
+LAVA_READY=0
+for i in $(seq 1 45); do
+  if curl -fsS -o /dev/null -H "Authorization: ${LAVALINK_PASSWORD}" \
+       "http://127.0.0.1:2333/v4/info" 2>/dev/null; then
+    LAVA_READY=1
+    echo -e "${GREEN}  ✅ Lavalink ready after ~$((i*2))s${NC}"
+    break
+  fi
+  sleep 2
+done
+
+if [ "$LAVA_READY" -ne 1 ]; then
+  echo -e "${RED}  ⚠️  Lavalink did not become ready in 90s. Last log lines:${NC}"
+  pm2 logs lavalink --lines 20 --nostream 2>/dev/null || true
+  echo -e "${YELLOW}  Continuing anyway — the bot retries the connection.${NC}"
+fi
 
 # ── Start Bot ──
 echo -e "${CYAN}  Starting PinPlay Bot...${NC}"
