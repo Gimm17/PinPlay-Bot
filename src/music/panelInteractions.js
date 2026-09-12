@@ -16,6 +16,9 @@ const { Colors } = require("../utils/colors");
 const { resolveSpotifyUrl, searchYouTubeForSpotify } = require("../utils/spotify");
 const { validateQuery } = require("../utils/validation");
 const { getHistory } = require("../commands/history");
+const { makeLogger } = require("../utils/logger");
+
+const log = makeLogger(config.logLevel);
 
 async function handlePanelButton(interaction, client) {
   const id = interaction.customId;
@@ -207,6 +210,13 @@ async function handlePanelButton(interaction, client) {
     await interaction.followUp({ content: `❌ Error: ${e?.message || e}`, flags: 64 }).catch(() => null);
   }
 
+  // One line covers all eight transport buttons; placed after the try/catch so
+  // a failed press is logged too, but only once per press. Vol actions carry
+  // the resulting level; other actions are just who-did-what.
+  const volDetail =
+    action === "volup" || action === "voldown" ? ` vol=${player.volume}` : "";
+  log.info(`[ctrl] ${action} guild=${guildId} by=${interaction.user.id}${volDetail}`);
+
   // update panel setelah aksi
   await updatePanel(client, guildId);
 
@@ -297,6 +307,10 @@ async function handleAddModal(interaction, client) {
   else player.queue.add(res.tracks[0]);
 
   if (!player.playing && !player.paused) player.play();
+
+  log.info(
+    `[ctrl] add guild=${guildId} by=${interaction.user.id} "${(res.tracks[0]?.title || "").slice(0, 70)}" tracks=${res.tracks.length}`
+  );
 
   setGuildSettings(guildId, { textChannelId: interaction.channelId });
 

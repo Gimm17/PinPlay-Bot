@@ -1,8 +1,12 @@
 const { SlashCommandBuilder } = require("discord.js");
+const { config } = require("../config");
 const { getGuildSettings } = require("../utils/storage");
 const { requireControl } = require("../utils/permissions");
 const { getPlayer } = require("../utils/player");
 const { successEmbed } = require("../utils/embeds");
+const { makeLogger } = require("../utils/logger");
+
+const log = makeLogger(config.logLevel);
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,6 +21,7 @@ module.exports = {
     if (!ok) return;
 
     await player.skip();
+    log.info(`[ctrl] skip guild=${interaction.guildId} by=${interaction.user.id}`);
     return interaction.reply({ embeds: [successEmbed("⏭️ **Skipped** — lanjut ke lagu berikutnya.")], flags: 64 });
   }
 };

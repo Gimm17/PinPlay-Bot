@@ -108,6 +108,13 @@ function attachMusicEvents(client) {
   kazagumo.on("playerStart", async (player, track) => {
     clearLeaveTimer(player.guildId);
 
+    // Playback was invisible in the dashboard log — the only visible lines were
+    // the background loader's, so the feed looked frozen after "[BG Load]
+    // Selesai" while music kept playing. Log every lifecycle event from here.
+    log.info(
+      `[player] play guild=${player.guildId} "${(track?.title || "?").slice(0, 90)}" src=${track?.sourceName || "?"} by=${track?.requester?.id || "?"}`
+    );
+
     // Remember what is actually playing: by the time playerException fires,
     // Lavalink has already sent TrackEndEvent and queue.current is null, so
     // the fallback below cannot read the failed track from the queue.
@@ -150,6 +157,11 @@ function attachMusicEvents(client) {
   });
 
   kazagumo.on("playerEnd", async (player, track) => {
+    // Normal-path end was silent (only the autoplay branch logged) — this is
+    // the "next track" moment the dashboard never showed.
+    log.info(
+      `[player] end guild=${player.guildId} "${(track?.title || "-").slice(0, 90)}" left=${player.queue.size}`
+    );
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
@@ -175,6 +187,7 @@ function attachMusicEvents(client) {
   });
 
   kazagumo.on("playerEmpty", async (player) => {
+    log.info(`[player] empty guild=${player.guildId}`);
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
@@ -185,6 +198,7 @@ function attachMusicEvents(client) {
 
   kazagumo.on("playerDestroy", async (player) => {
     clearLeaveTimer(player.guildId);
+    log.info(`[player] destroy guild=${player.guildId}`);
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
@@ -250,8 +264,36 @@ function attachMusicEvents(client) {
     }
   });
 
+  // Previously-unhandled lifecycle events — every one of these was silent.
+  // Event names verified against node_modules/kazagumo/dist/Modules/Interfaces.js.
+  kazagumo.on("playerStuck", (player, data) => {
+    log.warn(
+      `[player] stuck guild=${player.guildId} "${(player.queue?.current?.title || "-").slice(0, 90)}" threshold=${data?.thresholdMs ?? "?"}`
+    );
+  });
+
+  kazagumo.on("playerResolveError", (player, track, message) => {
+    log.error(
+      `[player] resolve-error guild=${player.guildId} "${(track?.title || "-").slice(0, 90)}" ${String(message || "").slice(0, 120)}`
+    );
+  });
+
+  // Emitted by the PlayerMoved plugin (loaded in kazagumo.js) on voice moves.
+  kazagumo.on("playerMoved", (player, _state, meta) => {
+    log.info(
+      `[player] moved guild=${player.guildId} ${meta?.oldChannelId || "?"}->${meta?.newChannelId || "?"}`
+    );
+  });
+
+  kazagumo.on("playerClosed", (player, data) => {
+    log.warn(
+      `[player] closed guild=${player.guildId} code=${data?.code ?? "?"} reason=${String(data?.reason ?? "").slice(0, 80)}`
+    );
+  });
+
   // save voice/text channel for 24/7 when connected
   kazagumo.on("playerCreate", (player) => {
+    log.info(`[player] create guild=${player.guildId} voice=${player.voiceId}`);
     // H8 (audit): cancel any pending auto-leave the moment a track is queued.
     //
     // The dangerous case is a LONG RESOLVE: a big Spotify playlist is added
