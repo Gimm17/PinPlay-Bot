@@ -101,7 +101,9 @@ function attachInteractionHandler(client) {
           }
 
           player.queue.add(track);
-          if (!player.playing && !player.paused) player.play();
+          // await: an unawaited play() rejection escapes this try/catch and
+          // becomes an unhandled rejection (fatal on Node >=18).
+          if (!player.playing && !player.paused) await player.play();
 
           setGuildSettings(interaction.guildId, { textChannelId: cache.channelId });
           client._searchCache.delete(`${interaction.user.id}:${interaction.guildId}`);
