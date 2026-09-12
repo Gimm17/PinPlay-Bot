@@ -63,6 +63,16 @@ attachMessageHandler(client);
 
 client.once("clientReady", async () => {
   log.info(`✅ Logged in as ${client.user.tag}`);
+
+  // Read-only dashboard API. Bound to loopback; TLS is terminated by Nginx in
+  // front of it. No-op unless DASHBOARD_TOKEN is set. See src/dashboard/api.js.
+  try {
+    const { startDashboardApi } = require("./dashboard/api");
+    startDashboardApi(client);
+  } catch (e) {
+    log.warn("Dashboard API failed to start:", e?.message || e);
+  }
+
   client.user.setPresence({
     activities: [{ name: "music | /play", type: ActivityType.Listening }],
     status: "online",
