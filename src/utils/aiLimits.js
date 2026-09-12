@@ -34,12 +34,19 @@ const file = path.join(dataDir, "aiLimits.json");
 
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-// Commands that don't count toward the per-user AI rate limit.
-// `/roast` and `/aiplaylist` are casual/fun features — owner wanted them
-// unlimited so they don't compete with the main quota reserved for `/chat`.
-// They still call AI (token usage is tracked separately), but they bypass
-// the hourly check entirely.
-const FREE_COMMANDS = new Set(["roast", "aiplaylist"]);
+// Commands that bypass the per-user hourly AI limit entirely.
+//
+// EMPTY ON PURPOSE (2026-09-12). `/roast` and `/aiplaylist` used to live here
+// so they felt unlimited while the bot was private. They are now metered:
+// the bot is inviteable to any server, both call AI on the owner's API key,
+// and the main provider is a REASONING model (gemini-3.8-flash) that spends
+// a few hundred hidden reasoning tokens per call. Ungated, that is an
+// open-ended bill anyone could run up.
+//
+// The mechanism is kept (rather than deleted) so the owner can exempt a
+// specific command again by adding its name — e.g. FREE_COMMANDS.add("roast").
+// `isFreeCommand` is still exercised by the aiLimits tests.
+const FREE_COMMANDS = new Set();
 
 function isFreeCommand(name) {
   return typeof name === "string" && FREE_COMMANDS.has(name);
@@ -101,8 +108,8 @@ function getEffectiveLimit(userId) {
  * Returns { allowed, remaining, resetAt, reason?, limit }.
  *
  * - If the user is the owner: always allowed, remaining = Infinity.
- * - If the command is in FREE_COMMANDS (roast, aiplaylist): always allowed,
- *   no slot consumed — the user said these should be unlimited.
+ * - If the command is in FREE_COMMANDS: always allowed, no slot consumed.
+ *   That set is empty by default; /chat, /roast and /aiplaylist are all metered.
  * - If within current window and count < effective limit: allowed, incremented.
  * - If within current window and count >= effective limit: NOT allowed.
  * - If no current window or window expired: starts a new one (count = 1).
@@ -145,7 +152,7 @@ function checkAndIncrement(userId, commandName) {
     };
   }
 
-  // Free commands (roast, aiplaylist) are unlimited and don't consume a slot
+  // Explicitly exempted commands (see FREE_COMMANDS) skip the quota entirely
   if (isFreeCommand(commandName)) {
     return {
       allowed: true,
