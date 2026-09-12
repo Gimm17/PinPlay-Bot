@@ -39,7 +39,9 @@ let _cache = null;
 let _writeTimer = null;
 const WRITE_DEBOUNCE_MS = 500;
 
-const PROVIDERS = ["nvidia", "tokenrouter"];
+// Keep in sync with PROVIDERS in ai.js — a provider missing here is silently
+// recorded as "unknown" (which is exactly how the C4 bug hid token usage).
+const PROVIDERS = ["limitrouter", "nvidia", "tokenrouter"];
 const SOURCES = ["chat", "roast", "aiplaylist", "classifier", "extractFacts"];
 
 function _emptyBucket() {

@@ -40,8 +40,11 @@ const config = {
   tokenrouter: {
     apiKey: process.env.TOKENROUTER_API_KEY || null
   },
+  limitrouter: {
+    apiKey: process.env.LIMITROUTER_API_KEY || null
+  },
   ai: {
-    defaultProvider: process.env.AI_DEFAULT_PROVIDER || "nvidia",
+    defaultProvider: process.env.AI_DEFAULT_PROVIDER || "limitrouter",
     defaultModel: process.env.AI_DEFAULT_MODEL || null
   },
   logLevel: (process.env.LOG_LEVEL || "info").toLowerCase(),

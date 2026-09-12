@@ -30,6 +30,12 @@ const { makeLogger } = require("./logger");
 const log = makeLogger(config.logLevel);
 
 const PROVIDERS = {
+  limitrouter: {
+    name: "limitrouter",
+    label: "LimitRouter",
+    baseURL: "https://limitrouter.com/v1",
+    defaultModel: "gemini-3.8-flash",
+  },
   nvidia: {
     name: "nvidia",
     label: "NVIDIA Build",
@@ -54,6 +60,12 @@ const PROVIDERS = {
  * Adding a new model = add an entry here (provider must exist in PROVIDERS).
  */
 const MODELS = {
+  "gemini-3.8-flash": {
+    provider: "limitrouter",
+    apiName: "gemini-3.8-flash",
+    label: "Gemini 3.8 Flash (LimitRouter)",
+    description: "LimitRouter • gemini-3.8-flash • Reasoning, cepat, Bahasa Indonesia OK",
+  },
   "llama-3.3-70b": {
     provider: "nvidia",
     apiName: "meta/llama-3.3-70b-instruct",
@@ -144,20 +156,26 @@ function _stripThinking(text) {
   // Match any of the angle-bracket forms. The inner body is allowed to
   // contain newlines ([\s\S]*?) and is matched non-greedily.
   const re = /<\s*(?:think|thinking|reasoning|reflection)\s*>[\s\S]*?<\s*\/\s*(?:think|thinking|reasoning|reflection)\s*>/gi;
-  return text.replace(re, "").trim();
+  let out = text.replace(re, "");
+  // Unclosed tag, e.g. "<think>blah" truncated by max_tokens. The paired regex
+  // above cannot match it, so the reasoning text would leak to the user. Drop
+  // from the opening tag to the end; anything before it is the real answer.
+  out = out.replace(/<\s*(?:think|thinking|reasoning|reflection)\s*>[\s\S]*$/i, "");
+  return out.trim();
 }
 
 function getProviderApiKey(name) {
+  if (name === "limitrouter") return config.limitrouter?.apiKey || null;
   if (name === "nvidia") return config.nvidia?.apiKey || null;
   if (name === "tokenrouter") return config.tokenrouter?.apiKey || null;
   return null;
 }
 
 function getAvailableProviders() {
-  return {
-    nvidia: Boolean(getProviderApiKey("nvidia")),
-    tokenrouter: Boolean(getProviderApiKey("tokenrouter")),
-  };
+  // Derived from PROVIDERS so adding a provider above registers it everywhere.
+  return Object.fromEntries(
+    Object.keys(PROVIDERS).map((name) => [name, Boolean(getProviderApiKey(name))])
+  );
 }
 
 function isProviderAvailable(name) {
