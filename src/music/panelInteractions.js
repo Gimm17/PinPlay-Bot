@@ -248,6 +248,7 @@ async function handleAddModal(interaction, client) {
       textId: interaction.channelId,
       volume: settings.volume ?? config.defaults.volume,
       deaf: true,
+      loadBalancer: true, // pick the healthiest node (local vs public)
     });
   } else {
     if (player.voiceId !== vc.id) await player.setVoiceChannel(vc.id);

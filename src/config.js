@@ -23,7 +23,18 @@ const config = {
     host: required("LAVALINK_HOST"),
     port: Number(required("LAVALINK_PORT")),
     password: required("LAVALINK_PASSWORD"),
-    secure: String(process.env.LAVALINK_SECURE || "false").toLowerCase() === "true"
+    secure: String(process.env.LAVALINK_SECURE || "false").toLowerCase() === "true",
+    // Optional public/secondary node (e.g. a free community Lavalink that can
+    // still play YouTube from datacenter IPs). Registered alongside the local
+    // node; Shoukaku picks the healthiest per player. All vars optional — if
+    // any is missing the node is simply not registered.
+    public: {
+      name: process.env.LAVALINK_PUBLIC_NAME || "public",
+      host: process.env.LAVALINK_PUBLIC_HOST || null,
+      port: process.env.LAVALINK_PUBLIC_PORT ? Number(process.env.LAVALINK_PUBLIC_PORT) : null,
+      password: process.env.LAVALINK_PUBLIC_PASSWORD || null,
+      secure: String(process.env.LAVALINK_PUBLIC_SECURE || "true").toLowerCase() === "true",
+    },
   },
   defaults: {
     volume: Number(process.env.DEFAULT_VOLUME || 60),

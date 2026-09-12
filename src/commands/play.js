@@ -75,6 +75,7 @@ module.exports = {
         textId: interaction.channelId,
         volume: settings.volume ?? config.defaults.volume,
         deaf: true,
+        loadBalancer: true, // pick the healthiest node (local vs public)
       });
     } else {
       if (player.voiceId !== vc.id) {
