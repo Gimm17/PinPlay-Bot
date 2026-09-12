@@ -21,7 +21,10 @@
  *   - src/dashboard/api.js      (read recent lines for GET /logs)
  */
 
-const MAX_ENTRIES = 500;
+// 2000 entries ≈ 0.6–1.0 MB resident. Raised from 500 (2026-09-13): playback
+// lifecycle logging fills the feed much faster now, and 500 lines of history
+// scrolled off within minutes on an active bot.
+const MAX_ENTRIES = 2000;
 const MAX_LINE_LEN = 500; // truncate absurdly long lines (stacks, big payloads)
 
 const _lines = []; // oldest -> newest
