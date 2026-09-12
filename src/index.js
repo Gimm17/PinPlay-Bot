@@ -106,6 +106,44 @@ client.once("clientReady", async () => {
     log.warn("Lavalink connect failed:", e?.message || e);
   }
 
+  // Watchdog for a mid-run Lavalink death.
+  //
+  // The boot-time wait above only covers Lavalink being slow to START. If
+  // Lavalink goes down while the bot is already running, Shoukaku exhausts its
+  // finite retries and gives up for good — the bot keeps serving Discord but
+  // every /play fails with "No node found" until someone restarts it manually.
+  // Observed in practice: a Lavalink restart took ~40s, the bot burned its
+  // retries inside that window, and playback stayed broken afterwards.
+  //
+  // So poll the port and re-add the node whenever it disappears. Cheap (one TCP
+  // connect per interval), and it makes the pair self-healing either way round.
+  const { waitForLavalinkPort, connectLavalink } = require("./music/kazagumo");
+  const WATCHDOG_MS = 30_000;
+  const watchdog = setInterval(async () => {
+    try {
+      const sh = client.kazagumo?.shoukaku;
+      const node = sh?.nodes?.get(config.lavalink.name);
+      // State 1 = CONNECTED (see SHOUKKU_STATE in src/dashboard/api.js)
+      if (node && node.state === 1) return;
+
+      const up = await waitForLavalinkPort(
+        config.lavalink.host,
+        config.lavalink.port,
+        5_000
+      );
+      if (!up) return; // still down; try again next tick
+
+      log.warn("⚠️ Lavalink came back but the node is not connected — re-registering.");
+      if (sh?.nodes?.get(config.lavalink.name)) sh.removeNode(config.lavalink.name);
+      if (connectLavalink(client.kazagumo)) {
+        log.info(`🔗 Lavalink node "${config.lavalink.name}" re-registered`);
+      }
+    } catch (e) {
+      log.warn("Lavalink watchdog error:", e?.message || e);
+    }
+  }, WATCHDOG_MS);
+  watchdog.unref(); // must not hold the process open
+
   // Pre-warm AI provider clients (faster first /chat, /roast, /aiplaylist)
   try {
     const { prewarmAll } = require("./utils/ai");
