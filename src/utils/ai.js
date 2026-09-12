@@ -312,11 +312,19 @@ async function callAI({ messages, temperature = 0.6, maxTokens = 4096, provider,
     );
 
     const status = err?.status || err?.response?.status;
+    // H4: preserve the HTTP status on the rethrow. These throw sites translate
+    // the error into an Indonesian user-facing message, which would otherwise
+    // discard `status` before callAIWithFallback can see that 401/403/429 must
+    // not trigger a provider fallback.
     if (status === 401 || status === 403) {
-      throw new Error(`API key ${providerName} tidak valid. Hubungi admin.`);
+      const e = new Error(`API key ${providerName} tidak valid. Hubungi admin.`);
+      e.status = status;
+      throw e;
     }
     if (status === 429) {
-      throw new Error("AI lagi ke-rate limit. Tunggu sebentar dan coba lagi.");
+      const e = new Error("AI lagi ke-rate limit. Tunggu sebentar dan coba lagi.");
+      e.status = status;
+      throw e;
     }
     if (status === 404) {
       // Model name not found on this provider. Surface actionable hint so

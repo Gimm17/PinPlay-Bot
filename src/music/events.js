@@ -8,18 +8,20 @@ const { Colors } = require("../utils/colors");
 const { formatMs, thumb } = require("../utils/format");
 const { getAutoplayOn } = require("../utils/autoplay");
 
+// Auto-leave when queue empty and 24/7 OFF.
+// Module-level (not per-attach) so play paths outside this file can cancel a
+// pending leave as soon as they queue a track — see clearLeaveTimer export (H8).
+const leaveTimers = new Map();
+
+function clearLeaveTimer(guildId) {
+  const t = leaveTimers.get(guildId);
+  if (t) clearTimeout(t);
+  leaveTimers.delete(guildId);
+}
+
 function attachMusicEvents(client) {
   const kazagumo = client.kazagumo;
   const log = makeLogger(config.logLevel);
-
-  // Auto-leave when queue empty and 24/7 OFF
-  const leaveTimers = new Map();
-
-  function clearLeaveTimer(guildId) {
-    const t = leaveTimers.get(guildId);
-    if (t) clearTimeout(t);
-    leaveTimers.delete(guildId);
-  }
 
   function scheduleLeave(player) {
     const guildId = player.guildId;
@@ -36,6 +38,10 @@ function attachMusicEvents(client) {
           const cur = getGuildSettings(guildId);
           if (cur.stay247) return;
 
+          // H8 is handled at the source: the queue.add patch in playerCreate
+          // cancels this timer the moment a track is queued, which covers the
+          // long-resolve case (where queue.current is still null anyway, so a
+          // "!player.queue.current" guard here would not have helped).
           if (player.queue.size === 0 && !player.playing) {
             await player.destroy();
             log.info(`👋 Auto-leave (empty) guild ${guildId}`);
@@ -51,13 +57,6 @@ function attachMusicEvents(client) {
           }
         }
       }, timeoutMs)
-    );
-  }
-
-  function escapeMarkdown(text = "") {
-    return String(text).replace(
-      /(\*|_|`|~|\[|\]|\(|\)|>|#|\+|-|=|\||\{|\}|\.|!)/g,
-      "\\$1"
     );
   }
 
@@ -162,7 +161,7 @@ function attachMusicEvents(client) {
         `[autoplay] playerEnd fired (queue empty), fetching related for "${track.title}"`
       );
       const { fetchRelated } = require("../utils/autoplay");
-      fetchRelated(player, track).catch((err) => {
+      fetchRelated(player, track, client).catch((err) => {
         log.error(`[autoplay] unhandled error in playerEnd: ${err.message}`);
       });
     }
@@ -199,6 +198,28 @@ function attachMusicEvents(client) {
 
   // save voice/text channel for 24/7 when connected
   kazagumo.on("playerCreate", (player) => {
+    // H8 (audit): cancel any pending auto-leave the moment a track is queued.
+    //
+    // The dangerous case is a LONG RESOLVE: a big Spotify playlist is added
+    // track-by-track over many seconds (spotify.js sleeps 750ms per 2 tracks).
+    // Until the first track lands, queue.size is 0, playing is false and
+    // queue.current is null — so every cheap "is it idle?" check passes and the
+    // leave timer can destroy the player mid-import, cancelling the rest.
+    //
+    // Rather than sprinkle a clearLeaveTimer() call across the 16 queue.add
+    // sites in 6 files (and forget it in the 17th), wrap the queue's add once
+    // per player. Any queued track therefore cancels the leave, including from
+    // code paths added later.
+    const queue = player.queue;
+    if (queue && typeof queue.add === "function" && !queue.__leaveTimerPatched) {
+      const originalAdd = queue.add.bind(queue);
+      queue.add = (...args) => {
+        clearLeaveTimer(player.guildId);
+        return originalAdd(...args);
+      };
+      queue.__leaveTimerPatched = true;
+    }
+
     const s = getGuildSettings(player.guildId);
     if (s.stay247) {
       setGuildSettings(player.guildId, {
@@ -209,4 +230,4 @@ function attachMusicEvents(client) {
   });
 }
 
-module.exports = { attachMusicEvents };
+module.exports = { attachMusicEvents, clearLeaveTimer };

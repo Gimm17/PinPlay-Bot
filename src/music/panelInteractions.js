@@ -181,7 +181,10 @@ async function handlePanelButton(interaction, client) {
       await player.setVolume(next);
       setGuildSettings(guildId, { volume: next });
     } else if (action === "prev") {
-      const prev = player.getPrevious();
+      // H5 (audit): getPrevious() with no argument returns previous[0] WITHOUT
+      // removing it, so pressing Prev repeatedly returned the same track forever.
+      // getPrevious(true) shifts it off the list, so each press walks further back.
+      const prev = player.getPrevious(true);
 
       if (!prev) {
         await interaction.followUp({ content: "❌ Tidak ada track sebelumnya.", flags: 64 }).catch(() => null);

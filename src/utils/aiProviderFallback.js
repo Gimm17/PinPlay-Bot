@@ -137,9 +137,20 @@ async function callAIWithFallback(opts = {}) {
     } catch (err) {
       lastErr = err;
       if (!isRetriableError(err)) {
-        // Non-retriable (e.g. 404 model not found, 401 bad key, 429 rate limit):
-        // skip remaining retries, but still try fallback below — fallback may
-        // have a working model on a different provider, fixing 404 issues.
+        // H4 (audit): 401/403/429 are NOT provider-specific — a bad key or an
+        // exhausted quota will fail identically on the other provider. Falling
+        // back therefore re-sends the entire (possibly large) prompt for nothing,
+        // up to 2 extra full-cost calls per user request. Throw instead.
+        //
+        // 404 and other 4xx DO still fall back on purpose: a model missing on
+        // one provider may exist on the other, which is what the swap below fixes.
+        const status = err?.status || err?.response?.status;
+        if (status === 401 || status === 403 || status === 429) {
+          log.warn(
+            `[AI] Primary ${currentProvider} failed with non-transferable status ${status} — not falling back.`
+          );
+          throw err;
+        }
         log.warn(
           `[AI] Primary ${currentProvider} got non-retriable error (${err.message || err}), trying fallback...`
         );

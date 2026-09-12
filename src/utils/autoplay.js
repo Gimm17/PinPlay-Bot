@@ -29,35 +29,7 @@ function resetCooldown(guildId) {
   _cooldownMap.delete(guildId);
 }
 
-// Private helpers (stubs - implemented in Task 4 & 5)
-async function fetchFromSpotify(seedTrack) {
-  // Extract Spotify track ID from URI
-  // seedTrack.uri format: "spotify:track:abc123" or full URL
-  let trackId = null;
-  if (seedTrack.uri?.startsWith('spotify:track:')) {
-    trackId = seedTrack.uri.split(':')[2];
-  } else if (seedTrack.identifier) {
-    trackId = seedTrack.identifier;
-  }
-  if (!trackId) return null;
-
-  // Try to use existing spotify helper if available
-  try {
-    const spotifyModule = require('./spotify');
-    if (typeof spotifyModule.getRecommendations === 'function') {
-      const recs = await spotifyModule.getRecommendations([trackId], 5);
-      if (recs && recs.length > 0) {
-        // Return first rec (kazagumo will resolve to playable via youtube search upstream)
-        return recs[0];
-      }
-    }
-  } catch (e) {
-    logger.warn(`[autoplay] spotify.getRecommendations failed: ${e.message}`);
-  }
-
-  // No recommendation impl or no results - signal fallback
-  return null;
-}
+// Private helpers
 
 async function fetchFromYouTube(player, seedTrack) {
   // Resolve YouTube video ID from URI or use search query
@@ -86,7 +58,7 @@ async function fetchFromYouTube(player, seedTrack) {
   const result = await kazagumo.search(query, { requester: seedTrack.requester || null });
   if (!result || !result.tracks || result.tracks.length === 0) return null;
 
-  const topPicks = result.tracks.slice(0, 5);
+  const topPicks = _filterUnplayed(player, result.tracks.slice(0, 5));
   const pick = topPicks[Math.floor(Math.random() * topPicks.length)];
 
   // Duration filter: 1-10 minutes
@@ -100,11 +72,6 @@ async function fetchFromYouTube(player, seedTrack) {
   }
 
   return pick;
-}
-
-function hasSpotifyConfig() {
-  const { config } = require('../config');
-  return Boolean(config.spotify?.clientId && config.spotify?.clientSecret);
 }
 
 function isCooldownActive(guildId) {
@@ -122,8 +89,31 @@ function isSpotifySource(track) {
   return track?.sourceName === 'spotify' || track?.uri?.includes('spotify');
 }
 
+/**
+ * M4 (audit): YouTube's radio mix for a given seed is stable, so the same few
+ * videos resurface across consecutive autoplay picks — an audible repeat loop.
+ * history.js already records the last 20 played tracks per guild, so prefer
+ * picks that are not in it. Falls back to the full pool when everything has
+ * been played recently, so we never stall by refusing to pick.
+ */
+function _filterUnplayed(player, picks) {
+  try {
+    const { getHistory } = require('../commands/history');
+    const seen = new Set(
+      (getHistory(player.guildId) || []).map((h) => h.uri).filter(Boolean)
+    );
+    if (seen.size === 0) return picks;
+    const fresh = picks.filter((t) => !seen.has(t.uri));
+    return fresh.length ? fresh : picks;
+  } catch (e) {
+    logger.warn(`[autoplay] history dedup skipped: ${e.message}`);
+    return picks;
+  }
+}
+
 // fetchRelated - core autoplay logic
-async function fetchRelated(player, currentTrack) {
+// @param {Client} [client] - needed to resolve the notify channel (player.textId)
+async function fetchRelated(player, currentTrack, client) {
   const guildId = player.guildId;
 
   // Cooldown check
@@ -133,41 +123,23 @@ async function fetchRelated(player, currentTrack) {
     return null;
   }
 
-  // Try Spotify first
+  // H2 (audit): the Spotify branch that used to live here was dead code —
+  // spotify.js does not export getRecommendations, so the feature check was
+  // always false. It nonetheless burned a Promise.race + 5s timer on every
+  // Spotify-seeded autoplay before falling through to YouTube. Autoplay is
+  // YouTube-only; sourceName in the log line is accurate.
   let track = null;
-  let source = null;
+  const source = 'youtube';
 
-  if (hasSpotifyConfig() && isSpotifySource(currentTrack)) {
-    try {
-      logger.info(`[autoplay] fetch from spotify for "${currentTrack.title}"`);
-      const result = await Promise.race([
-        fetchFromSpotify(currentTrack),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
-      ]);
-      if (result) {
-        track = result;
-        source = 'spotify';
-      }
-    } catch (err) {
-      logger.warn(`[autoplay] spotify fetch failed: ${err.message}, trying youtube`);
-    }
-  }
-
-  // Fallback YouTube
-  if (!track) {
-    try {
-      logger.info(`[autoplay] fetch from youtube for "${currentTrack.title}"`);
-      const result = await Promise.race([
-        fetchFromYouTube(player, currentTrack),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
-      ]);
-      if (result) {
-        track = result;
-        source = 'youtube';
-      }
-    } catch (err) {
-      logger.warn(`[autoplay] youtube fetch failed: ${err.message}`);
-    }
+  try {
+    logger.info(`[autoplay] fetch from youtube for "${currentTrack.title}"`);
+    const result = await Promise.race([
+      fetchFromYouTube(player, currentTrack),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
+    ]);
+    if (result) track = result;
+  } catch (err) {
+    logger.warn(`[autoplay] youtube fetch failed: ${err.message}`);
   }
 
   // Both failed
@@ -200,14 +172,25 @@ async function fetchRelated(player, currentTrack) {
     logger.warn(`[autoplay] player.play() failed after queue.add: ${playErr.message}`);
   }
 
-  // One-time notify per session
-  if (!_notifiedThisSession.has(guildId)) {
-    _notifiedThisSession.add(guildId);
-    const channel = player.textChannel;
-    if (channel) {
-      channel.send(`🎵 **Autoplay started** — adding related tracks based on "${currentTrack.title}"`).catch(err => {
-        logger.warn(`[autoplay] failed to send notify: ${err.message}`);
-      });
+  // M3 (audit): this used `player.textChannel`, which does not exist on a
+  // Kazagumo player — the correct property is `textId` (a string), so the
+  // notify never fired. The flag was also set BEFORE the guard, marking the
+  // session notified even when nothing was sent, which killed it permanently.
+  // Now: resolve the channel via the client and only set the flag on success.
+  if (!_notifiedThisSession.has(guildId) && player.textId) {
+    try {
+      const channel = await client?.channels?.fetch(player.textId).catch(() => null);
+      if (channel) {
+        await channel
+          .send(
+            `🎵 **Autoplay started** — adding related tracks based on "${currentTrack.title}"`,
+            { allowedMentions: { parse: [] } } // H1: title is untrusted input
+          )
+          .then(() => _notifiedThisSession.add(guildId))
+          .catch((err) => logger.warn(`[autoplay] failed to send notify: ${err.message}`));
+      }
+    } catch (err) {
+      logger.warn(`[autoplay] notify failed: ${err.message}`);
     }
   }
 
