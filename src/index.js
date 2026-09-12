@@ -7,7 +7,7 @@ const { attachMessageHandler } = require("./handlers/messageHandler");
 
 const { createKazagumo } = require("./music/kazagumo");
 const { attachMusicEvents } = require("./music/events");
-const { readAll, getGuildSettings } = require("./utils/storage");
+const { readAll, getGuildSettings, flushNow } = require("./utils/storage");
 const { makeLogger } = require("./utils/logger");
 
 const log = makeLogger(config.logLevel);
@@ -98,5 +98,38 @@ client.kazagumo.shoukaku.on("disconnect", (name) => {
   log.warn(`⚠️ Lavalink node disconnected: ${name}`);
 });
 
-// Login
-client.login(config.discord.token);
+// ─── Process error boundary ───────────────────────────────────────────────
+// Node >=18 defaults to --unhandled-rejections=throw. Without these handlers a
+// single unawaited rejection (e.g. player.play() while Lavalink is down, or an
+// AI provider 5xx during a chat reply) kills the whole bot with no log.
+// PM2 would restart it, but a fast crash-loop becomes restart spam and hides
+// the real cause — so we log first, always.
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandledRejection:", reason);
+});
+
+process.on("uncaughtException", (reason) => {
+  log.error("uncaughtException:", reason);
+  // State is unknown after an uncaught exception — flush settings and let PM2
+  // bring up a clean process rather than continuing in a half-broken state.
+  flushNow();
+  process.exit(1);
+});
+
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    log.info(`Received ${sig}, shutting down...`);
+    // Flush the debounced guildSettings write BEFORE exiting, otherwise an
+    // `.access mode` change made <500ms ago is silently dropped.
+    flushNow();
+    client.destroy();
+    process.exit(0);
+  });
+}
+
+// Login — catch so a bad/missing token produces a clear one-line error
+// instead of a raw unhandled-rejection stack trace.
+client.login(config.discord.token).catch((e) => {
+  log.error("Login failed:", e?.message || e);
+  process.exit(1);
+});
