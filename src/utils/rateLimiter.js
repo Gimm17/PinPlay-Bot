@@ -41,4 +41,10 @@ class RateLimiter {
   }
 }
 
-module.exports = { RateLimiter };
+// H6 (audit): interactionHandler and messageHandler each did `new RateLimiter()`,
+// giving every user TWO independent 3-hits-per-5s budgets — one for slash, one
+// for prefixes — that could be alternated (/skip, .s, /skip, .s) to push 6
+// requests per 5s through the expensive paths including AI. Share one instance.
+const shared = new RateLimiter();
+
+module.exports = { RateLimiter, shared };

@@ -7,10 +7,8 @@ const {
 
 // import helper dari help.js untuk render halaman help all
 const helpCmd = require("../commands/help");
-const { RateLimiter } = require("../utils/rateLimiter");
+const { shared: rateLimiter } = require("../utils/rateLimiter");
 const { isAdmin } = require("../utils/permissions");
-
-const rateLimiter = new RateLimiter();
 
 function attachInteractionHandler(client) {
   const log = makeLogger(config.logLevel);
