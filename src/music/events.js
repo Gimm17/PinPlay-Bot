@@ -108,6 +108,11 @@ function attachMusicEvents(client) {
   kazagumo.on("playerStart", async (player, track) => {
     clearLeaveTimer(player.guildId);
 
+    // Remember what is actually playing: by the time playerException fires,
+    // Lavalink has already sent TrackEndEvent and queue.current is null, so
+    // the fallback below cannot read the failed track from the queue.
+    player.__currentTrack = track;
+
     // Record to history
     recordTrack(player.guildId, track);
 
@@ -188,7 +193,56 @@ function attachMusicEvents(client) {
   });
 
   kazagumo.on("playerException", async (player, data) => {
-    log.warn("Player exception:", data?.exception?.message || data);
+    const msg = data?.exception?.message || String(data || "");
+    log.warn("Player exception:", msg);
+
+    // YouTube playback fails from this VPS (datacenter IP is blocked by
+    // YouTube even with valid OAuth — see PINPLAY_PLAYBACK_DIAGNOSIS.md).
+    // playerStart already fired by then, so the panel shows a playing track
+    // that will never be heard. Recover by re-searching the SAME song on
+    // SoundCloud and skipping into it. One attempt per cooldown so a broken
+    // source cannot loop exceptions forever.
+    const SOURCE_FAILURE =
+      /All clients failed|requires login|Sign in to confirm|Video player configuration|page needs to be reloaded/i;
+    // queue.current is already null here (TrackEndEvent arrived first) — the
+    // playing track was stashed on playerStart instead.
+    const cur = player.__currentTrack;
+    const fromYouTube = (cur?.sourceName || "").toLowerCase().includes("youtube");
+
+    if (SOURCE_FAILURE.test(msg) && cur && fromYouTube && !player.__scFallback) {
+      player.__scFallback = true;
+      try {
+        const query = `${cur.title} ${cur.author || ""}`.trim();
+        const res = await client.kazagumo.search(query, {
+          requester: cur.requester,
+          engine: "soundcloud",
+        });
+        const t = res?.tracks?.[0];
+        if (t) {
+          // Not skip(): by the time the exception fires the player already went
+          // through TrackEnd -> empty, so skip() would send an empty track stop
+          // instead of starting the queued one. play(track) replaces directly.
+          await player.play(t);
+          log.info(
+            `[fallback] YouTube failed (${msg.slice(0, 60)}…) — playing "${t.title}" from SoundCloud`
+          );
+          const ch = await client.channels.fetch(player.textId).catch(() => null);
+          if (ch) {
+            ch.send({
+              content: `⚠️ YouTube gagal dimuat dari server — diputar dari SoundCloud: **${t.title}**`,
+              allowedMentions: { parse: [] },
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        log.warn("[fallback] SoundCloud fallback failed:", e?.message || e);
+      } finally {
+        setTimeout(() => {
+          player.__scFallback = false;
+        }, 10_000);
+      }
+    }
+
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
