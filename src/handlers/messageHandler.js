@@ -33,7 +33,15 @@ function attachMessageHandler(client) {
       const owner = client._chatBotsLastReply?.get(ref);
       if (owner && owner.userId === message.author.id) {
         const { handleChatReply } = require("../commands/chat");
-        return handleChatReply(message, client, owner.session);
+        // await + catch: this is the AI path (most likely to fail on a provider
+        // 5xx). Returning the bare promise lets a rejection escape every
+        // try/catch in this file and become fatal.
+        try {
+          return await handleChatReply(message, client, owner.session);
+        } catch (err) {
+          log.error("Chat reply error:", err?.message || err);
+          return;
+        }
       }
     }
 

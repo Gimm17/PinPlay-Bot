@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { atomicWriteJsonSync } = require("./jsonFile");
 
 const dataDir = path.join(process.cwd(), "data");
 const settingsFile = path.join(dataDir, "guildSettings.json");
@@ -25,7 +26,17 @@ function _loadCache() {
   const raw = fs.readFileSync(settingsFile, "utf-8");
   try {
     _cache = JSON.parse(raw);
-  } catch {
+  } catch (e) {
+    // NOTE: this is still fail-OPEN, not fail-closed — resetting to {} means every
+    // guild falls back to controlMode "all". That is a deliberate, pre-existing
+    // tradeoff we are NOT changing here (locking everyone out on a parse error is
+    // worse for a music bot than defaulting open). The only change is that it is
+    // no longer silent: previously a wiped file left zero trace in the logs.
+    // Follow-up: restore from the last-good backup instead of resetting.
+    console.error(
+      "[ERROR] guildSettings.json is corrupt — resetting to empty. Access control reverts to default (controlMode: \"all\"). Cause:",
+      e?.message || e
+    );
     _cache = {};
   }
 }
@@ -39,12 +50,32 @@ function _scheduleSave() {
   _writeTimer = setTimeout(() => {
     _writeTimer = null;
     try {
-      ensure();
-      fs.writeFileSync(settingsFile, JSON.stringify(_cache, null, 2), "utf-8");
+      // atomicWriteJsonSync does temp-file + rename (and mkdir), so a crash
+      // mid-write can never truncate the live file the way writeFileSync did.
+      atomicWriteJsonSync(settingsFile, _cache);
     } catch (e) {
       console.error("[WARN ] Failed to persist guildSettings:", e?.message || e);
     }
   }, WRITE_DEBOUNCE_MS);
+}
+
+/**
+ * Flush any pending debounced write immediately and synchronously.
+ * MUST be called from SIGINT/SIGTERM handlers — otherwise a change made
+ * inside the 500ms debounce window (e.g. `.access mode restricted`) is lost
+ * on Ctrl-C, silently reverting access control.
+ */
+function flushNow() {
+  if (_writeTimer) {
+    clearTimeout(_writeTimer);
+    _writeTimer = null;
+  }
+  if (_cache === null) return;
+  try {
+    atomicWriteJsonSync(settingsFile, _cache);
+  } catch (e) {
+    console.error("[WARN ] Failed to flush guildSettings:", e?.message || e);
+  }
 }
 
 function readAll() {
@@ -89,4 +120,4 @@ function setGuildSettings(guildId, patch) {
   return _cache[guildId];
 }
 
-module.exports = { getGuildSettings, setGuildSettings, readAll };
+module.exports = { getGuildSettings, setGuildSettings, readAll, flushNow };
