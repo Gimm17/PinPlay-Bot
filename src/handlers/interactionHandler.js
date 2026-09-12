@@ -89,6 +89,7 @@ function attachInteractionHandler(client) {
               textId: cache.channelId,
               volume: settings.volume ?? appConfig.defaults.volume,
               deaf: true,
+              loadBalancer: true, // pick the healthiest node (local vs public)
             });
           }
 

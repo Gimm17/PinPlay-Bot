@@ -400,6 +400,7 @@ async function handleAIPlaylistButton(interaction, client) {
           textId: cache.channelId,
           volume: settings.volume ?? config.defaults.volume,
           deaf: true,
+          loadBalancer: true, // pick the healthiest node (local vs public)
         });
       } catch (err) {
         log.error("AI playlist create player error:", err?.message || err);

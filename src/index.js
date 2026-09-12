@@ -189,6 +189,7 @@ client.kazagumo.shoukaku.on("ready", async (name) => {
         textId: s.textChannelId,
         volume: s.volume ?? config.defaults.volume,
         deaf: true,
+        loadBalancer: true, // pick the healthiest node (local vs public)
       });
 
       log.info(`🔁 Restored 24/7 in guild ${guildId}`);

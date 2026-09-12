@@ -48,9 +48,16 @@ function waitForLavalinkPort(host, port, timeoutMs) {
 function connectLavalink(kazagumo) {
   const nodes = kazagumo._pendingNodes || [];
   if (nodes.length === 0) return false;
-  if (kazagumo.shoukaku.nodes && kazagumo.shoukaku.nodes.size > 0) return false;
-  for (const node of nodes) kazagumo.shoukaku.addNode(node);
-  return true;
+  // Register any node that is not already tracked. Previously this bailed when
+  // ANY node existed; with a secondary (public) node we may need to add one
+  // while the local node is already connected.
+  let added = 0;
+  for (const node of nodes) {
+    if (kazagumo.shoukaku.nodes.has(node.name)) continue;
+    kazagumo.shoukaku.addNode(node);
+    added++;
+  }
+  return added > 0;
 }
 
 function createKazagumo(client) {
@@ -64,6 +71,19 @@ function createKazagumo(client) {
       secure: config.lavalink.secure,
     },
   ];
+
+  // Optional secondary node (community/public Lavalink). Lets playback survive
+  // when the local node cannot serve a source (e.g. YouTube blocking this VPS's
+  // datacenter IP) and provides failover if either side goes down.
+  const p = config.lavalink.public;
+  if (p.host && p.port && p.password) {
+    nodes.push({
+      name: p.name,
+      url: `${p.host}:${p.port}`,
+      auth: p.password,
+      secure: p.secure,
+    });
+  }
 
   const kazagumo = new Kazagumo(
     {
