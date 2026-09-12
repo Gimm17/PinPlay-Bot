@@ -94,7 +94,6 @@ const BOOL_ALIASES = {
 // === CATEGORY G: Help special parsing (1 command) ===
 const HELP_ALIASES = {
   h: { command: "help", parse: "help" },
-  hv2: { command: "helpv2", parse: "rest", option: "mode", required: false },
 };
 
 // === CATEGORY H: Subcommands (3 commands) ===
@@ -130,7 +129,6 @@ const FULL_COMMAND_ALIASES = {
   skipto: { command: "skipto", parse: "int", option: "position", required: true },
   panel: { command: "panel", parse: "subcommand:panel" },
   help: { command: "help", parse: "help" },
-  helpv2: { command: "helpv2", parse: "rest", option: "mode", required: false },
   "247": { command: "247", parse: "bool", option: "enable" },
   djrole: { command: "djrole", parse: "subcommand:djrole" },
   access: { command: "access", parse: "subcommand:access" },
