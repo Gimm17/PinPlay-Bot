@@ -45,12 +45,8 @@ function isFreeCommand(name) {
   return typeof name === "string" && FREE_COMMANDS.has(name);
 }
 
-function _loadWindows() {
-  if (_writeTimer !== null) return; // already loaded (writeTimer null = fresh module, but we use a flag)
-  // Use _windows.size as the "loaded" indicator — it's set on load
-  // Better: explicit flag
-}
-
+// Dead code removed (audit L1): _loadWindows() was defined but never called —
+// _ensureLoaded() below is the real loader.
 let _loaded = false;
 function _ensureLoaded() {
   if (_loaded) return;

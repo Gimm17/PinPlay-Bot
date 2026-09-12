@@ -19,7 +19,8 @@
  *   notes (if memory enabled). Background fact-extraction runs after each
  *   chat completion.
  *
- * Sessions are stored on `client._chatSessions` (Map<userId, session>).
+ * Sessions are stored in a module-level Map (userId -> session), swept on a
+ * 5-minute timer so an abandoned session cannot linger (M8).
  * Bot message -> session mapping is on `client._chatBotsLastReply` (Map).
  *
  * Personality picker customId: "chat:setpersonality:<userId>"
@@ -50,6 +51,19 @@ const { makeLogger } = require("../utils/logger");
 const log = makeLogger(config.logLevel);
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
+
+// M8 (audit): session map lives at module scope so it can be swept on a timer.
+// Previously the TTL was only enforced lazily inside _getSession — i.e. only
+// when that same user chatted again — so a user who chatted once and left kept
+// their history (up to 40 messages) for the whole process lifetime.
+const _chatSessions = new Map(); // userId -> session
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [uid, s] of _chatSessions) {
+    if (now - s.lastActive >= SESSION_TTL_MS) _chatSessions.delete(uid);
+  }
+}, 5 * 60 * 1000).unref(); // unref: must not hold the process open
 const MAX_HISTORY = 20; // keep last N user/assistant PAIRS (i.e. 40 messages)
 const MAX_HISTORY_CHARS = 12_000; // ~3k tokens of history, regardless of message count (H3)
 
@@ -69,13 +83,13 @@ function _isAllowed(userId) {
 // === Session management ===
 
 function _getSession(client, userId) {
-  if (!client._chatSessions) client._chatSessions = new Map();
   const now = Date.now();
-  const existing = client._chatSessions.get(userId);
+  const existing = _chatSessions.get(userId);
   if (existing && now - existing.lastActive < SESSION_TTL_MS) return existing;
-  // Expired or new — start fresh
+  // Expired or new — start fresh. (client kept in the signature so callers and
+  // the session-sweeper contract stay unchanged.)
   const fresh = { messages: [], lastActive: now, personality: null };
-  client._chatSessions.set(userId, fresh);
+  _chatSessions.set(userId, fresh);
   return fresh;
 }
 

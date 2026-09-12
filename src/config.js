@@ -9,8 +9,12 @@ function required(name) {
 
 const config = {
   discord: {
-    token: process.env.DISCORD_TOKEN || null,
-    clientId: process.env.CLIENT_ID || null,
+    // M2 (audit): these were `|| null`, so a missing token surfaced as a raw
+    // stack trace from discord.js instead of a clear one-line error. They are
+    // required for BOTH the bot and the deploy-commands script, so validate
+    // them here with the same helper used for Lavalink.
+    token: required("DISCORD_TOKEN"),
+    clientId: required("CLIENT_ID"),
     guildId: process.env.GUILD_ID || null,
     ownerId: process.env.OWNER_ID || null
   },

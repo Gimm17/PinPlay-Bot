@@ -68,38 +68,48 @@ class PrefixOptions {
   }
 
   /**
-   * getUser(name)
+   * getUser(name, required)
    * Parse user mention <@123456> and return { id, toString() }
+   *
+   * M11 (audit): `required` was ignored, so a command that passed `true`
+   * (e.g. djrole.js getRole("role", true)) got `null` instead of an error,
+   * and then threw a TypeError on the next line when it read `.id`.
+   * Now a missing/invalid value throws when required, matching getString etc.
    */
-  getUser(name) {
-    const val = this._store[name];
-    if (!val) return null;
-    const match = String(val).match(/^<@!?(\d+)>$/);
-    if (!match) return null;
-    return { id: match[1], toString: () => val };
+  getUser(name, required = false) {
+    return this._parseId(name, required, /^<@!?(\d+)>$/, "user");
   }
 
   /**
-   * getRole(name)
+   * getRole(name, required)
    * Parse role mention <@&123456> and return { id, toString() }
    */
-  getRole(name) {
-    const val = this._store[name];
-    if (!val) return null;
-    const match = String(val).match(/^<@&(\d+)>$/);
-    if (!match) return null;
-    return { id: match[1], toString: () => val };
+  getRole(name, required = false) {
+    return this._parseId(name, required, /^<@&(\d+)>$/, "role");
   }
 
   /**
-   * getChannel(name)
+   * getChannel(name, required)
    * Parse channel mention <#123456> and return { id, toString() }
    */
-  getChannel(name) {
+  getChannel(name, required = false) {
+    return this._parseId(name, required, /^<#(\d+)>$/, "channel");
+  }
+
+  /** Shared mention parser for getUser/getRole/getChannel. */
+  _parseId(name, required, pattern, label) {
     const val = this._store[name];
-    if (!val) return null;
-    const match = String(val).match(/^<#(\d+)>$/);
-    if (!match) return null;
+    if (!val) {
+      if (required) throw new Error(`Missing required option: ${name}`);
+      return null;
+    }
+    const match = String(val).match(pattern);
+    if (!match) {
+      if (required) {
+        throw new Error(`Format ${label} tidak valid: "${val}". Pakai mention (contoh: @${label}).`);
+      }
+      return null;
+    }
     return { id: match[1], toString: () => val };
   }
 }

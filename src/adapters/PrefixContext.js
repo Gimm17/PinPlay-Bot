@@ -65,13 +65,18 @@ class PrefixContext {
    * Used for commands that take time (play, search, lyrics, etc.)
    */
   async deferReply(options = {}) {
-    // Send placeholder message
+    // M12 (audit): the placeholder was hardcoded, so a deferReply({ content })
+    // (e.g. ".clip download" with custom text) lost its text.
     const placeholder = await this._message
-      .reply({ content: "_Searching..._" })
+      .reply({ content: options.content || "_Searching..._" })
       .catch(() => null);
 
-    this._deferred = true;
-    this._deferredMessage = placeholder;
+    // Only mark deferred if a placeholder actually exists — otherwise
+    // editReply/followUp would target a null message.
+    if (placeholder) {
+      this._deferred = true;
+      this._deferredMessage = placeholder;
+    }
     return placeholder;
   }
 

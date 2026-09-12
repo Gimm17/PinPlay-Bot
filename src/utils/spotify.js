@@ -315,10 +315,12 @@ async function resolveRemainingTracks(client, guildId, remainingTracks, requeste
       }
     }
 
-    // Update panel setelah setiap batch
+    // Update panel setelah setiap batch.
+    // M6: debounced, not awaited — a 100-track playlist would otherwise fire
+    // ~50 panel edits (each with its own messages.fetch) and risk 429s.
     try {
-      const { updatePanel } = require("../music/panel");
-      await updatePanel(client, guildId);
+      const { schedulePanelUpdate } = require("../music/panel");
+      schedulePanelUpdate(client, guildId);
     } catch { /* ignore panel errors */ }
 
     // Delay antar batch — biar Lavalink bisa handle command lain
@@ -578,10 +580,10 @@ async function resolveRemainingTracksYouTube(client, guildId, remainingTracks, r
       }
     }
 
-    // Update panel setelah setiap batch
+    // Update panel setelah setiap batch (M6: debounced — lihat catatan di atas).
     try {
-      const { updatePanel } = require("../music/panel");
-      await updatePanel(client, guildId);
+      const { schedulePanelUpdate } = require("../music/panel");
+      schedulePanelUpdate(client, guildId);
     } catch { /* ignore */ }
 
     // Delay antar batch

@@ -403,7 +403,9 @@ function buildHelpAllPageEmbed(pageIndex) {
       .join("\n");
     const value =
       `**Usage:** \`${c.usage}\`\n` +
-      `**Penjelasan:** ${truncate(c.detail, 900)}\n` +
+      // M13 (audit): 900 + usage + 3 examples pushed ai-set past Discord's 1024
+      // char field-value limit -> "Invalid Form Body". 700 keeps headroom.
+      `**Penjelasan:** ${truncate(c.detail, 700)}\n` +
       (examples ? `**Contoh:**\n${examples}` : "");
 
     embed.addFields({ name: `/${c.name}`, value });
