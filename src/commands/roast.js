@@ -11,6 +11,21 @@ const { makeLogger } = require("../utils/logger");
 
 const log = makeLogger(config.logLevel);
 
+/**
+ * H1 (audit): send roast text with mentions fully locked down.
+ *
+ * The roast prompt is designed to be aggressive and runs at temperature 0.9,
+ * and user-controlled song titles/data go straight into it — so its output is
+ * untrusted. A plain string payload would resolve any @everyone it emitted.
+ * `parse: []` blocks that; `users` re-allows only the intended ping target.
+ */
+function _roastPayload(text, pingUserId) {
+  return {
+    content: text,
+    allowedMentions: { parse: [], users: pingUserId ? [pingUserId] : [] },
+  };
+}
+
 const ROAST_SYSTEM_PROMPT = `Lo roaster paling savage di grup WA. Gaya bahasa lo gaul banget, kayak anak Twitter/TikTok Indonesia (bucin, red flag, halu, insecure, healing, circle, ambis, dll).
 
 TUGAS: Roast orang yang request lagu yang lagi diputar. Sambungin tema/lirik lagunya ke kondisi mental dia secara savage tapi lucu.
@@ -113,7 +128,9 @@ module.exports = {
         if (cached) {
           // Cache hit: just send it directly, no extra AI call (still counts toward rate limit)
           await interaction.editReply("Roast...");
-          await interaction.followUp(`<@${interaction.user.id}> ${cached}`.trim().slice(0, 1950));
+          await interaction.followUp(
+            _roastPayload(`<@${interaction.user.id}> ${cached}`.trim().slice(0, 1950), interaction.user.id)
+          );
           if (interaction.deleteReply) await interaction.deleteReply();
           return;
         }
@@ -138,7 +155,7 @@ module.exports = {
         aiPromptCache.set(interaction.user.id, cacheKey, roast);
 
         // Kirim roast di chat baru, lalu hapus status "Roast..."
-        await interaction.followUp(roast.slice(0, 1900));
+        await interaction.followUp(_roastPayload(roast.slice(0, 1900), null));
         if (interaction.deleteReply) await interaction.deleteReply();
         return;
       }
@@ -164,7 +181,7 @@ module.exports = {
         await interaction.editReply("Roast...");
         const mention = requester?.id ? `<@${requester.id}> ` : "";
         const text = `${mention}${cached}`.trim();
-        await interaction.followUp(text.slice(0, 1950));
+        await interaction.followUp(_roastPayload(text.slice(0, 1950), requester?.id));
         if (interaction.deleteReply) await interaction.deleteReply();
         return;
       }
@@ -207,12 +224,15 @@ module.exports = {
       const text = `${mention}${roast}`.trim();
 
       // Kirim roast di chat baru, lalu hapus status "Roast..."
-      await interaction.followUp(text.slice(0, 1950));
+      await interaction.followUp(_roastPayload(text.slice(0, 1950), requester?.id));
       if (interaction.deleteReply) await interaction.deleteReply();
       return;
     } catch (err) {
       log.error("Roast command error:", err?.message || err);
-      return interaction.followUp(`❌ ${err?.message || "Gagal bikin roast. Coba lagi nanti."}`);
+      // Error text is echoed to the user, so lock mentions here too.
+      return interaction.followUp(
+        _roastPayload(`❌ ${err?.message || "Gagal bikin roast. Coba lagi nanti."}`, null)
+      );
     }
   },
 };
