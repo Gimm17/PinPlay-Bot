@@ -41,6 +41,17 @@ function _ensureOwner(interaction) {
 }
 
 /**
+ * Discord limits a command choice name to 100 characters and throws at build
+ * time (module load = bot startup) if exceeded. Model labels are concatenated
+ * with their descriptions, so a longer label silently became a startup crash.
+ * Clamp to the limit rather than trusting the label to stay short.
+ */
+function _choiceName(str) {
+  const s = String(str);
+  return s.length <= 100 ? s : s.slice(0, 97) + "...";
+}
+
+/**
  * Resolve a "user" option from an interaction, supporting both Discord
  * user mentions (slash) and raw 17-20 digit IDs (prefix commands store
  * raw IDs in string options since PrefixContext doesn't resolve mentions).
@@ -83,7 +94,15 @@ module.exports = {
             .setDescription("Model")
             .setRequired(true)
             .addChoices(
-              ...MODEL_NAMES.map((name) => ({ name: `${MODELS[name].label} — ${MODELS[name].description}`, value: name }))
+              // Discord rejects a choice name longer than 100 chars, and it does
+              // so at BUILD time — i.e. when this module is required, which is
+              // bot startup. A long model label therefore crashed the whole bot
+              // rather than just showing a bad menu. Truncate defensively so
+              // adding a model can never take the process down again.
+              ...MODEL_NAMES.map((name) => ({
+                name: _choiceName(`${MODELS[name].label} — ${MODELS[name].description}`),
+                value: name,
+              }))
             )
         )
     )
@@ -284,7 +303,9 @@ module.exports = {
       }
       const modelDef = MODELS[name];
       if (!isProviderAvailable(modelDef.provider)) {
-        const keyName = modelDef.provider === "nvidia" ? "NVIDIA_API_KEY" : "TOKENROUTER_API_KEY";
+        // Derived, not a ternary: adding a provider used to require editing this
+        // line too, and forgetting meant the error named the WRONG env var.
+        const keyName = `${String(modelDef.provider).toUpperCase()}_API_KEY`;
         return _replyEphemeral(
           interaction,
           errorEmbed(

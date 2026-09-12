@@ -38,6 +38,7 @@ const {
   getDefaultModel,
   isModelAvailableOnProvider,
   getModelsForProvider,
+  getAvailableProviders,
 } = require("./ai");
 const { getAISettings } = require("./aiSettings");
 const { makeLogger } = require("./logger");
@@ -72,11 +73,18 @@ function isRetriableError(err) {
 }
 
 function getFallbackProvider(currentProvider) {
-  // Prefer tokenrouter over nvidia for fallback (usually faster, more reliable)
-  const order = ["tokenrouter", "nvidia"];
+  // Preference order for fallback, best first. LimitRouter leads because it
+  // fronts many models and is the configured primary; tokenrouter and nvidia
+  // remain as independent second/third options. `currentProvider` is skipped so
+  // we never "fall back" onto the provider that just failed.
+  const order = ["limitrouter", "tokenrouter", "nvidia"];
   for (const name of order) {
     if (name === currentProvider) continue;
     if (isProviderAvailable(name)) return name;
+  }
+  // Unknown primary (shouldn't happen) — take anything available.
+  for (const name of Object.keys(getAvailableProviders())) {
+    if (name !== currentProvider && isProviderAvailable(name)) return name;
   }
   return null;
 }

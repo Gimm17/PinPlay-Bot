@@ -55,8 +55,12 @@ function _setYoutubeCache(key, data) {
   });
 }
 
-// Run cleanup periodically
-setInterval(_cleanupPlaylistCache, 5 * 60 * 1000); // every 5 minutes
+// Run cleanup periodically.
+// unref() on both: without it these timers keep the Node event loop alive, so
+// any process that merely requires this module (e.g. play.js, or a test that
+// loads every command) would hang forever instead of exiting. Every other
+// timer in this codebase already does this — these two were the exception.
+setInterval(_cleanupPlaylistCache, 5 * 60 * 1000).unref(); // every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of _youtubeCache.entries()) {
@@ -64,7 +68,7 @@ setInterval(() => {
       _youtubeCache.delete(key);
     }
   }
-}, 10 * 60 * 1000); // every 10 minutes for YouTube cache
+}, 10 * 60 * 1000).unref(); // every 10 minutes for YouTube cache
 
 /**
  * [PRIORITAS 1] Mendapatkan token via OAuth Refresh Token.
