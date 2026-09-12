@@ -68,6 +68,34 @@ client.once("clientReady", async () => {
     status: "online",
   });
 
+  // Wait for Lavalink's port, THEN register the node (which is what makes
+  // Shoukaku dial). The node list starts empty for exactly this reason: if
+  // Shoukaku owned the node at this point it would dial on its own `clientReady`
+  // hook and race Lavalink's boot, and a lost race costs it every retry —
+  // leaving the node permanently DISCONNECTED while PM2 still shows "online".
+  //
+  // On a normal boot Lavalink is already up, so this resolves in milliseconds.
+  try {
+    const { waitForLavalinkPort, connectLavalink } = require("./music/kazagumo");
+    const ready = await waitForLavalinkPort(
+      config.lavalink.host,
+      config.lavalink.port,
+      60_000
+    );
+    if (ready) {
+      log.info(`🔌 Lavalink port ${config.lavalink.port} is open`);
+    } else {
+      log.warn(
+        `⚠️ Lavalink port ${config.lavalink.port} still closed after 60s — connecting anyway (it may come up later)`
+      );
+    }
+    if (connectLavalink(client.kazagumo)) {
+      log.info(`🔗 Lavalink node "${config.lavalink.name}" registered`);
+    }
+  } catch (e) {
+    log.warn("Lavalink connect failed:", e?.message || e);
+  }
+
   // Pre-warm AI provider clients (faster first /chat, /roast, /aiplaylist)
   try {
     const { prewarmAll } = require("./utils/ai");
