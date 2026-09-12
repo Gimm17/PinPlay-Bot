@@ -5,7 +5,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-const { getGuildSettings } = require("../utils/storage");
+const { getGuildSettings, setGuildSettings } = require("../utils/storage");
 const {
   getPlayer,
   getCurrentTrack,
@@ -169,7 +169,15 @@ async function updatePanel(client, guildId) {
 
   const message = await channel.messages
     .fetch(settings.panelMessageId)
-    .catch(() => null);
+    .catch(async (err) => {
+      // M7 (audit): if the user deleted the panel, this fetch failed on EVERY
+      // player event forever, spamming REST calls. 10008 = Unknown Message —
+      // clear the stored ids so we stop trying.
+      if (err?.code === 10008 || err?.status === 404) {
+        setGuildSettings(guildId, { panelChannelId: null, panelMessageId: null });
+      }
+      return null;
+    });
   if (!message) return;
 
   const player = getPlayer(client, guildId);
@@ -179,8 +187,27 @@ async function updatePanel(client, guildId) {
   await message.edit({ embeds: [embed], components }).catch(() => null);
 }
 
+// M6 (audit): a 100-track Spotify playlist edits the panel once per resolve
+// batch — ~50 edits, each preceded by a messages.fetch — which sits close to
+// Discord's rate limit (and panel.js swallows the resulting 429 silently).
+// Coalesce bursts into one edit per guild. Panel BUTTONS still call updatePanel
+// directly, so user-facing responsiveness is unchanged.
+const _pendingPanelUpdate = new Map(); // guildId -> timer
+
+function schedulePanelUpdate(client, guildId, ms = 2000) {
+  if (_pendingPanelUpdate.has(guildId)) return;
+  _pendingPanelUpdate.set(
+    guildId,
+    setTimeout(() => {
+      _pendingPanelUpdate.delete(guildId);
+      updatePanel(client, guildId).catch(() => null);
+    }, ms)
+  );
+}
+
 module.exports = {
   buildPanelEmbed,
   buildPanelComponents,
+  schedulePanelUpdate,
   updatePanel,
 };

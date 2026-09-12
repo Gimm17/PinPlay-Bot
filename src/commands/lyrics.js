@@ -51,7 +51,11 @@ module.exports = {
     try {
       // Use lrclib.net — free, no API key needed
       const encoded = encodeURIComponent(query);
-      const res = await fetch(`https://lrclib.net/api/search?q=${encoded}`);
+      // M5 (audit): without a timeout a hung connection leaves the interaction
+      // unanswered forever. Every other fetch in the codebase already has one.
+      const res = await fetch(`https://lrclib.net/api/search?q=${encoded}`, {
+        signal: AbortSignal.timeout(8000),
+      });
 
       if (!res.ok) {
         return interaction.editReply("❌ Gagal mengambil lirik. Coba lagi nanti.");

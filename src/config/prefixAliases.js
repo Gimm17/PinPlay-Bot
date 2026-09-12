@@ -142,7 +142,12 @@ const FULL_COMMAND_ALIASES = {
 };
 
 // === GABUNG SEMUA ALIASES ===
-const PREFIX_ALIASES = {
+// Null prototype (latent bug from the audit): a plain object literal inherits
+// Object.prototype, so `.constructor` or `.toString` resolved to a function
+// rather than undefined and slipped past messageHandler's `if (!mapping) return`
+// guard. It was safe only because a second guard reads mapping.command — one
+// refactor away from a crash. Object.create(null) removes the inherited keys.
+const PREFIX_ALIASES = Object.assign(Object.create(null), {
   ...NO_ARGS_ALIASES,
   ...REST_STRING_ALIASES,
   ...INT_ALIASES,
@@ -152,7 +157,7 @@ const PREFIX_ALIASES = {
   ...HELP_ALIASES,
   ...SUBCOMMAND_ALIASES,
   ...FULL_COMMAND_ALIASES,
-};
+});
 
 /**
  * Parse arguments dari message text berdasarkan parsing rule

@@ -119,7 +119,10 @@ async function handlePanelButton(interaction, client) {
 
     try {
       const encoded = encodeURIComponent(query);
-      const res = await fetch(`https://lrclib.net/api/search?q=${encoded}`);
+      // M5 (audit): timeout so a hung lrclib connection cannot strand the button.
+      const res = await fetch(`https://lrclib.net/api/search?q=${encoded}`, {
+        signal: AbortSignal.timeout(8000),
+      });
       
       if (!res.ok) {
         await interaction.editReply("❌ Gagal mengambil lirik. Coba lagi nanti.");

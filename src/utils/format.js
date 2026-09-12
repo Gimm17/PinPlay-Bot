@@ -9,7 +9,9 @@
  * @returns {string} Formatted string like "3:45" or "1:02:30"
  */
 function formatMs(ms) {
-  const total = Math.floor(ms / 1000);
+  // M14 (audit): guard NaN/undefined — Lavalink can report a missing length for
+  // live streams, and `Math.floor(undefined/1000)` renders "NaN:NaN".
+  const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
   const s = total % 60;
   const m = Math.floor(total / 60) % 60;
   const h = Math.floor(total / 3600);
