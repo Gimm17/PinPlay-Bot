@@ -7,6 +7,7 @@ const { recordTrack } = require("../commands/history");
 const { Colors } = require("../utils/colors");
 const { formatMs, thumb } = require("../utils/format");
 const { getAutoplayOn } = require("../utils/autoplay");
+const { setVoiceStatus, clearVoiceStatus, formatTrackStatus } = require("../utils/voiceStatus");
 
 // Auto-leave when queue empty and 24/7 OFF.
 // Module-level (not per-attach) so play paths outside this file can cancel a
@@ -166,6 +167,11 @@ function attachMusicEvents(client) {
     // Record to history
     recordTrack(player.guildId, track);
 
+    // Mirror the current song into the voice channel's status text, the way
+    // other music bots do. Decorative: setVoiceStatus never throws and is
+    // throttled internally, so it cannot affect playback.
+    setVoiceStatus(client, player.voiceId, formatTrackStatus(track));
+
     // Jangan biarkan panel nge-block pesan started playing
     try {
       await updatePanel(client, player.guildId);
@@ -231,6 +237,9 @@ function attachMusicEvents(client) {
 
   kazagumo.on("playerEmpty", async (player) => {
     log.info(`[player] empty guild=${player.guildId}`);
+    // Nothing playing any more (autoplay may still fill this, in which case
+    // playerStart will set a fresh title immediately after).
+    clearVoiceStatus(client, player.voiceId);
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
@@ -242,6 +251,9 @@ function attachMusicEvents(client) {
   kazagumo.on("playerDestroy", async (player) => {
     clearLeaveTimer(player.guildId);
     log.info(`[player] destroy guild=${player.guildId}`);
+    // Bot is leaving (or the player died) — never strand a song title on the
+    // channel after the music stops.
+    clearVoiceStatus(client, player.voiceId);
     try {
       await updatePanel(client, player.guildId);
     } catch (e) {
