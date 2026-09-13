@@ -54,6 +54,8 @@
  *   GET  /guilds                    -> servers the bot is in
  *   GET  /users                     -> counts and per-guild member totals
  *   GET  /logs                      -> recent redacted log lines
+ *   DELETE /logs                    -> clear current in-memory redacted log buffer
+ *                                      (never PM2 or disk; audit marker follows clear)
  *   GET  /ai                        -> AI token/cost/limit statistics
  *   GET  /ai/users                  -> per-user AI quota/limits table
  *   GET  /players?user=<discordId>  -> live now-playing state, canControl per guild
@@ -587,6 +589,20 @@ function writeHandler(handler) {
 }
 
 const WRITE_ROUTES = [
+  {
+    // This affects ONLY logBuffer's current in-memory, already-redacted ring.
+    // It never reads/writes PM2 log files or persistent data. Keep _seq
+    // monotonic: old browser cursors must never replay lines after a clear.
+    m: "DELETE",
+    p: /^\/logs$/,
+    h: writeHandler(({ res, cors, ip, log }) => {
+      logBuffer.clear();
+      // Audit AFTER clear so the action remains forensically visible. The UI
+      // receives this final cursor and intentionally starts after the marker.
+      audit(log, ip, "DELETE", "/logs", "cleared=true");
+      return json(res, 200, { ok: true, lastSeq: logBuffer.lastSeq() }, cors);
+    }),
+  },
   {
     m: "POST",
     p: /^\/ai\/users\/(\d{17,20})\/reset$/,
