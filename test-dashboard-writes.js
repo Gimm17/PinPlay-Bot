@@ -143,6 +143,17 @@ async function main() {
   r = await req("PATCH", "/status");
   check("PATCH /status -> 405 with Allow", r.status === 405 && /GET/.test(r.allow), r);
 
+  // Clear only the in-memory redacted buffer. It preserves the monotonic
+  // cursor and leaves a post-clear audit marker, which the UI skips by setting
+  // its cursor to response.lastSeq.
+  r = await req("DELETE", "/logs");
+  check("DELETE /logs -> 200", r.status === 200 && r.json?.ok === true, r);
+  check("clear logs returns a finite final cursor", Number.isFinite(r.json?.lastSeq), r);
+  const afterClear = await req("GET", `/logs?since=${r.json?.lastSeq}`);
+  check("GET /logs after final cursor has no old lines", afterClear.status === 200 && afterClear.json?.logs?.length === 0, afterClear);
+  const auditLog = await req("GET", "/logs?limit=10");
+  check("clear leaves post-clear audit marker", auditLog.json?.logs?.some((l) => l.line.includes("DELETE /logs")), auditLog);
+
   r = await req("PUT", "/ai/users/123/limit", { value: 5 });
   check("malformed id -> 405/404 (route does not match)", r.status === 405 || r.status === 404, r);
 
