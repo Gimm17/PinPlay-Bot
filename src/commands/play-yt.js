@@ -62,7 +62,22 @@ module.exports = {
     }
 
     // === Player setup ===
+    // Same stale-player guard as play.js: `player.voiceId` survives a forced
+    // Discord disconnect, so reuse is only safe while Discord still reports the
+    // bot in voice. See handleVoiceLeave in music/events.js.
+    const liveVoiceId = interaction.guild.members.me?.voice?.channelId ?? null;
     let player = getPlayer(client, interaction.guildId);
+
+    if (player && !liveVoiceId) {
+      log.info(
+        `[PlayYT] stale player guild=${interaction.guildId} (voice connection gone) — recreating`
+      );
+      try {
+        await player.destroy();
+      } catch { /* already gone */ }
+      player = null;
+    }
+
     if (!player) {
       player = await client.kazagumo.createPlayer({
         guildId: interaction.guildId,

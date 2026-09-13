@@ -23,6 +23,49 @@ function attachMusicEvents(client) {
   const kazagumo = client.kazagumo;
   const log = makeLogger(config.logLevel);
 
+  /**
+   * Tear down a player whose voice connection is gone.
+   *
+   * WHY THIS EXISTS: when a human right-clicks the bot and hits Disconnect,
+   * Discord sends VOICE_STATE_UPDATE with channel_id null. Kazagumo only emits
+   * `playerMoved(LEFT)` for that — it does NOT destroy the player, clear the
+   * queue, or clear `queue.current`. Nothing in this app reacted either, so the
+   * stale KazagumoPlayer stayed in `kazagumo.players` with its whole queue.
+   *
+   * Consequences seen in production:
+   *   - `player.voiceId` still equals the OLD channel (Shoukaku updates only its
+   *     internal Connection.channelId), so the next `/play` in that same channel
+   *     skipped `setVoiceChannel()` and no OP4 rejoin was ever sent;
+   *   - the next `/play` added behind the stale `queue.current`, so the previous
+   *     user's song restarted (or, if `playerClosed` never arrived, `playing`
+   *     stayed true and the new track hung in the queue without playing);
+   *   - the panel kept rendering a NOW PLAYING for a bot that had left.
+   *
+   * Deliberately NOT applied when 24/7 is on: staying in voice is the whole
+   * point there, and the settings are what rejoin on restart. `/247 false` or
+   * `/leave` remain the explicit teardown paths.
+   */
+  async function handleVoiceLeave(guildId) {
+    const player = kazagumo.players.get(guildId);
+    if (!player) return;
+    if (getGuildSettings(guildId).stay247) return;
+
+    clearLeaveTimer(guildId);
+    log.info(
+      `[player] teardown guild=${guildId} reason=voice-left "queue dropped (${player.queue.size} pending)"`
+    );
+    try {
+      await player.destroy();
+    } catch (e) {
+      log.warn("Player teardown after voice leave failed:", e?.message || e);
+    }
+    try {
+      await updatePanel(client, guildId);
+    } catch (e) {
+      log.warn("updatePanel failed (voice leave):", e?.message || e);
+    }
+  }
+
   function scheduleLeave(player) {
     const guildId = player.guildId;
     const s = getGuildSettings(guildId);
@@ -279,10 +322,26 @@ function attachMusicEvents(client) {
   });
 
   // Emitted by the PlayerMoved plugin (loaded in kazagumo.js) on voice moves.
-  kazagumo.on("playerMoved", (player, _state, meta) => {
+  kazagumo.on("playerMoved", (player, state, meta) => {
     log.info(
-      `[player] moved guild=${player.guildId} ${meta?.oldChannelId || "?"}->${meta?.newChannelId || "?"}`
+      `[player] moved guild=${player.guildId} state=${state || "?"} ${meta?.oldChannelId || "?"}->${meta?.newChannelId || "?"}`
     );
+  });
+
+  // The PlayerMoved plugin only logs — it never cleans up. A forced Disconnect
+  // from Discord therefore left a stale player + queue behind (see
+  // handleVoiceLeave). Catch that raw state change here: if the BOT itself has
+  // no voice channel any more, the player is dead weight.
+  //
+  // Listening to the raw event (not a Kazagumo one) is deliberate: it fires for
+  // every transition, including the Disconnect case where no Lavalink
+  // WebSocketClosedEvent is guaranteed, so it does not depend on nodes.
+  client.on("voiceStateUpdate", (oldState, newState) => {
+    if (oldState?.id !== client.user?.id) return; // only the bot's own state
+    // Still in a channel => a move, not a leave; the player stays valid.
+    if (newState?.channelId) return;
+    if (!oldState?.channelId) return; // was already out; nothing to tear down
+    handleVoiceLeave(oldState.guild.id).catch(() => {});
   });
 
   kazagumo.on("playerClosed", (player, data) => {
