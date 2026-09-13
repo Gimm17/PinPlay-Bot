@@ -66,8 +66,30 @@ module.exports = {
     let totalTracks = 0;
     let processedTracks = 0;
 
-    // create player (or reuse)
+    // Create a player, or reuse the existing one ONLY if its voice connection is
+    // still live.
+    //
+    // `player.voiceId` is NOT trustworthy here: when a human force-disconnects
+    // the bot, Discord clears the voice channel but Kazagumo's field keeps the
+    // old id. The old code compared against that stale value, so `/play` in the
+    // same channel skipped setVoiceChannel() and never rejoined, while the
+    // previous queue/current track was still attached. Check Discord's live
+    // voice state instead, and if the bot is no longer connected, throw the
+    // stale player (and its queue) away before starting fresh.
+    const liveVoiceId = interaction.guild.members.me?.voice?.channelId ?? null;
     let player = getPlayer(client, interaction.guildId);
+
+    if (player && !liveVoiceId) {
+      // Bot is not in voice any more -> this player object is a leftover.
+      log.info(
+        `[play] stale player guild=${interaction.guildId} (voice connection gone) — recreating`
+      );
+      try {
+        await player.destroy();
+      } catch { /* already gone */ }
+      player = null;
+    }
+
     if (!player) {
       player = await client.kazagumo.createPlayer({
         guildId: interaction.guildId,
