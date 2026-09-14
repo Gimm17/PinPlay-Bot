@@ -10,7 +10,13 @@
 require("dotenv").config();
 
 // Set BEFORE requiring api.js — the module reads these at start time.
-process.env.DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || "test-token-abc123";
+//
+// Force the test token rather than falling back to whatever .env holds: the VPS
+// .env carries the REAL DASHBOARD_TOKEN, and every request below sends the
+// literal test token, so on that machine the whole suite would 401. The ||=
+// form silently "worked" only on dev boxes with no token configured.
+const TEST_TOKEN = "test-token-abc123";
+process.env.DASHBOARD_TOKEN = TEST_TOKEN;
 const TEST_PORT = 3777;
 
 const assert = require("assert");
@@ -84,7 +90,7 @@ function req(method, path, body, port = TEST_PORT) {
         path,
         method,
         headers: {
-          Authorization: "Bearer test-token-abc123",
+          Authorization: `Bearer ${TEST_TOKEN}`,
           "Content-Type": "application/json",
           ...(data ? { "Content-Length": Buffer.byteLength(data) } : {}),
         },
@@ -164,6 +170,34 @@ async function main() {
   r = await req("GET", "/ai/users");
   check("GET /ai/users -> 200 with users array", r.status === 200 && Array.isArray(r.json?.users), r);
   check("AI users: no Infinity leaks", !JSON.stringify(r.json).includes("Infinity"), r);
+
+  // --- model switching (dashboard parity with /ai-set model) ---
+  {
+    const ai = require("./src/utils/ai");
+    r = await req("GET", "/ai");
+    const opts = r.json?.modelOptions;
+    check("GET /ai exposes modelOptions", Array.isArray(opts) && opts.length === ai.MODEL_NAMES.length, r);
+    check(
+      "modelOptions carry provider + availability",
+      opts?.every((o) => o.key && o.provider && typeof o.available === "boolean"),
+      opts
+    );
+
+    r = await req("PUT", "/ai/model", { model: "definitely-not-a-model" });
+    check("unknown model -> 400", r.status === 400, r);
+
+    // Pick the first model whose provider actually has a key in this env.
+    const usable = opts?.find((o) => o.available);
+    if (usable) {
+      r = await req("PUT", "/ai/model", { model: usable.key });
+      check(`set model ${usable.key} -> 200`, r.status === 200 && r.json?.model === usable.key, r);
+      const settings = require("./src/utils/aiSettings").getAISettings();
+      check("model persisted to aiSettings", settings.model === usable.key, { model: settings.model });
+      check("provider auto-set with the model", settings.provider === usable.provider, {
+        provider: settings.provider,
+      });
+    }
+  }
 
   r = await req("GET", `/players?user=${OWNER}`);
   check("GET /players -> 200 array", r.status === 200 && Array.isArray(r.json?.players), r);

@@ -78,6 +78,24 @@ const MODELS = {
     label: "M3 (TokenRouter)",
     description: "TokenRouter • MiniMax-M3 • Ringan & cepat",
   },
+  "deepseek-v4.1-flash": {
+    provider: "limitrouter",
+    apiName: "deepseek-v4.1-flash",
+    label: "DeepSeek V4.1 Flash (LimitRouter)",
+    description: "LimitRouter • deepseek-v4.1-flash • Cepat & hemat",
+  },
+  "gpt-oss-120b": {
+    provider: "limitrouter",
+    apiName: "gpt-oss-120b",
+    label: "GPT-OSS 120B (LimitRouter)",
+    description: "LimitRouter • gpt-oss-120b • Open-weight besar, reasoning kuat",
+  },
+  "glm-5": {
+    provider: "limitrouter",
+    apiName: "glm-5",
+    label: "GLM-5 (LimitRouter)",
+    description: "LimitRouter • glm-5 • Multibahasa, Bahasa Indonesia OK",
+  },
 };
 
 const MODEL_NAMES = Object.keys(MODELS);

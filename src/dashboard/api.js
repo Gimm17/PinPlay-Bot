@@ -353,6 +353,17 @@ function buildAi() {
     return {
       provider: ai.getDefaultProviderName(),
       model: ai.getDefaultModel(ai.getDefaultProviderName()),
+      // Every switchable model, with the provider it belongs to and whether
+      // that provider's API key is configured. `available:false` still renders
+      // in the picker but cannot be selected — the UI must not offer a model
+      // the bot would 401 on.
+      modelOptions: ai.MODEL_NAMES.map((key) => ({
+        key,
+        label: ai.MODELS[key].label,
+        description: ai.MODELS[key].description,
+        provider: ai.MODELS[key].provider,
+        available: ai.isProviderAvailable(ai.MODELS[key].provider),
+      })),
       fallbackEnabled: s?.fallbackEnabled !== false,
       memoryEnabled: s?.memoryEnabled !== false,
       userHourlyLimit: s?.userHourlyLimit ?? null,
@@ -601,6 +612,30 @@ const WRITE_ROUTES = [
       // receives this final cursor and intentionally starts after the marker.
       audit(log, ip, "DELETE", "/logs", "cleared=true");
       return json(res, 200, { ok: true, lastSeq: logBuffer.lastSeq() }, cors);
+    }),
+  },
+  {
+    // Mirrors `/ai-set model <key>`: the model picks the provider, so both are
+    // written together (ai-set.js does the same). Validated against MODELS, and
+    // against the provider's API key being present — selecting a model whose
+    // key is unset would just 401 on the next call.
+    m: "PUT",
+    p: /^\/ai\/model$/,
+    h: writeHandler(({ res, cors, ip, log, body }) => {
+      const ai = require("../utils/ai");
+      const key = String(body.model || "");
+      const def = ai.MODELS[key];
+      if (!def) {
+        return json(res, 400, { error: `unknown model: ${key}`, models: ai.MODEL_NAMES }, cors);
+      }
+      if (!ai.isProviderAvailable(def.provider)) {
+        return json(res, 409, { error: `provider "${def.provider}" has no API key configured` }, cors);
+      }
+      const settings = require("../utils/aiSettings");
+      settings.setProvider(def.provider);
+      settings.setModel(key);
+      audit(log, ip, "PUT", "/ai/model", `model=${key} provider=${def.provider}`);
+      return json(res, 200, { ok: true, model: key, provider: def.provider }, cors);
     }),
   },
   {
