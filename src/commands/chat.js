@@ -42,6 +42,7 @@ const {
   detectPersonality,
   getPersonality,
   getPersonalitySystemPrompt,
+  getPersonalityChoice,
   PERSONALITIES,
   VALID,
 } = require("../utils/personalities");
@@ -104,9 +105,14 @@ function _rememberBotReply(client, userId, botMessage, session) {
 
 function _buildChatEmbed(personality, content) {
   const p = getPersonality(personality);
+  // getPersonalityLabel handles `general`, which intentionally has no character
+  // name — without it the title would read "🤖 AI Chat — null".
+  const title = p.displayName
+    ? `${p.emoji} AI Chat — ${p.displayName}`
+    : `${p.emoji} AI Chat`;
   const embed = new EmbedBuilder()
     .setColor(Colors.CHAT)
-    .setTitle(`${p.emoji} AI Chat — ${p.displayName}`)
+    .setTitle(title)
     .setDescription(content.slice(0, 4000))
     .setFooter({ text: "Reply pesan ini untuk lanjut chat (10 menit)." });
   return embed;
@@ -251,7 +257,7 @@ module.exports = {
         .setName("personality")
         .setDescription("[Owner] Pilih personality manual (default: auto-detect)")
         .setRequired(false)
-        .addChoices(...VALID.map((v) => ({ name: `${PERSONALITIES[v].emoji} ${PERSONALITIES[v].displayName}`, value: v })))
+        .addChoices(...VALID.map((v) => ({ name: getPersonalityChoice(v), value: v })))
     ),
 
   async execute(interaction, clientArg) {
