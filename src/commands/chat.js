@@ -143,16 +143,186 @@ function _pushHistory(session, userText, assistantText) {
 
 // === Build system prompt with memory injection ===
 
-function _buildSystemPrompt(personality, userId) {
+const CHAT_CORE_RULES =
+  `\n\n--- ATURAN RESPON DISCORD PINPLAY (WAJIB DIPATUHI) ---\n` +
+  `1. LANGSUNG SATU JAWABAN TERBAIK (DILARANG BIKIN OPSI BERGANDA):\n` +
+  `   - Kalau user minta buatin kata-kata, pujian, gombalan, pesan, ucapan, caption, puisi, atau konten apa pun, LANGSUNG PILIH SATU HASIL TERBAIK dan berikan langsung teks jadinya.\n` +
+  `   - JANGAN PERNAH membuat daftar pilihan/versi (DILARANG seperti "Versi Puitis:", "Versi Lucu:", "Versi 1, Versi 2", "Tinggal pilih sesuai selera:").\n` +
+  `   - JANGAN suruh user memilih. User bukan mau disuruh milih, user mau langsung lihat satu jawaban jadi yang siap pakai.\n` +
+  `   - HANYA buatkan beberapa versi/opsi jika user SECARA EKSPLISIT meminta (misal: "kasih 3 opsi", "buatkan beberapa pilihan"). Kalau tidak diminta, WAJIB HANYA 1 HASIL LANGSUNG.\n` +
+  `   - Hindari basa-basi pengantar klise ("Tentu, ini dia...", "Siap, ini kata-katanya...") dan penutup basa-basi. Langsung berikan teks jadinya.\n\n` +
+  `2. PENANGANAN MENTION / NGETAG USER DISCORD:\n` +
+  `   - Kalau user minta buatin kata-kata/pesan untuk seseorang dan menyebut username atau mention Discord (seperti @username atau <@id>):\n` +
+  `     * HASIL GENERATE WAJIB MENYEBUT NAMA DAN MENGETAG target tersebut.\n` +
+  `     * PERTAHANKAN FORMAT TAG ASLINYA: Jika ada tag <@id>, gunakan persis <@id> agar di Discord benar-benar ngetag orangnya. Jangan diubah jadi teks biasa atau tanda petik.\n` +
+  `     * DILARANG TEMPLATE STATIS/KAKU: Jangan kaku selalu menaruh tag di awal kalimat ("Halo @user, ...") atau selalu di akhir ("...ya @user").\n` +
+  `     * LETAKKAN TAG SECARA DINAMIS DAN LUWES: Selipkan tag di dalam alur kalimat/paragraf secara alami sesuai konteks dan ritme kalimat (misal di tengah kalimat pujian, sebagai subjek yang diagungkan, atau seruan puitis).\n`;
+
+function _userExplicitlyAskedMulti(text) {
+  if (!text || typeof text !== "string") return false;
+  return (
+    /\b(?:\d+|beberapa|banyak)\s*(?:versi|opsi|pilihan|contoh|alternatif)\b/i.test(text) ||
+    /\b(?:kasih|buatkan|berikan|minta)\s+(?:\d+|beberapa)\b/i.test(text)
+  );
+}
+
+function _cleanSingleResponse(text, prompt) {
+  if (!text || typeof text !== "string") return text;
+  if (_userExplicitlyAskedMulti(prompt)) return text.trim();
+
+  // Pattern matching headings like: "Versi Puitis-Klasik:", "1. Versi Lucu:", "**Versi 1:**"
+  const versionSplitRegex = /(?:^|\n+)(?:\*{0,2}(?:Versi|\d+\.\s*Versi)\s+[^:\n]+:\*{0,2})\s*\n*/i;
+  if (versionSplitRegex.test(text)) {
+    const parts = text.split(versionSplitRegex).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1 && /beberapa\s+versi|pilih\s+sesuai|berikut\s+(?:adalah\s+)?pilihan/i.test(parts[0])) {
+      return parts[1];
+    }
+    if (parts.length > 0) return parts[0];
+  }
+
+  let cleaned = text.replace(
+    /^(?:Siap,?\s*)?(?:ini\s+)?(?:beberapa\s+versi|ada\s+beberapa\s+pilihan)[^.\n]*[.:]\s*(?:Tinggal\s+pilih\s+sesuai\s+selera:?)?\s*\n*/i,
+    ""
+  );
+  return cleaned.trim();
+}
+
+function _ensureMentionInReply(reply, targetUsers) {
+  if (!reply || !targetUsers || targetUsers.length === 0) return reply;
+  let result = reply;
+  for (const user of targetUsers) {
+    if (!user.tag) continue;
+    if (result.includes(user.tag)) continue;
+
+    // 1. Replace quoted name like "melobi" or 'melobi' with tag
+    const quoteRegex = new RegExp(`["']${user.name}["']`, "i");
+    if (quoteRegex.test(result)) {
+      result = result.replace(quoteRegex, `${user.tag}`);
+      continue;
+    }
+
+    // 2. Replace plain whole word name with tag
+    const nameRegex = new RegExp(`\\b${user.name}\\b`, "i");
+    if (nameRegex.test(result)) {
+      result = result.replace(nameRegex, `${user.tag}`);
+      continue;
+    }
+
+    // 3. Weave into opening royal/formal/casual greeting if present
+    const greetingMatch = result.match(
+      /^(Wahai|Duhai|Ya|Salam|Hai|Halo|Kepada|Untuk|Teruntuk)\s+([^,\n.!?]+)([,.!?\n])/i
+    );
+    if (greetingMatch) {
+      result = result.replace(
+        greetingMatch[0],
+        `${greetingMatch[1]} ${greetingMatch[2]} ${user.tag}${greetingMatch[3]}`
+      );
+      continue;
+    }
+
+    // 4. Natural fallback
+    result = `${user.tag}, ${result}`;
+  }
+  return result;
+}
+
+function _detectTargetMentions(prompt, guild) {
+  if (!prompt || typeof prompt !== "string") {
+    return { targetHints: "", targetUsers: [], mentionedUserIds: [] };
+  }
+
+  const mentionedUserIds = new Set();
+  const targetUsers = [];
+
+  // 1. Check for Discord user mentions: <@123456789> or <@!123456789>
+  const userMentionRegex = /<@!?(\d+)>/g;
+  let match;
+  while ((match = userMentionRegex.exec(prompt)) !== null) {
+    const id = match[1];
+    mentionedUserIds.add(id);
+    let displayName = null;
+    if (guild?.members?.cache) {
+      const member = guild.members.cache.get(id);
+      if (member) {
+        displayName = member.displayName || member.user?.username;
+      }
+    }
+    targetUsers.push({
+      name: displayName || "User Discord",
+      tag: `<@${id}>`,
+      id,
+    });
+  }
+
+  // 2. Check for @username (not already in <@...>)
+  const plainMentionRegex = /(?:^|\s)@([a-zA-Z0-9_.]{2,32})\b/g;
+  while ((match = plainMentionRegex.exec(prompt)) !== null) {
+    const username = match[1];
+    if (username.toLowerCase() === "everyone" || username.toLowerCase() === "here") {
+      continue;
+    }
+
+    let foundMember = null;
+    if (guild?.members?.cache) {
+      foundMember = guild.members.cache.find(
+        (m) =>
+          m.user?.username?.toLowerCase() === username.toLowerCase() ||
+          m.displayName?.toLowerCase() === username.toLowerCase()
+      );
+    }
+
+    if (foundMember) {
+      mentionedUserIds.add(foundMember.id);
+      targetUsers.push({
+        name: foundMember.displayName || foundMember.user?.username || username,
+        tag: `<@${foundMember.id}>`,
+        id: foundMember.id,
+      });
+    } else {
+      targetUsers.push({
+        name: username,
+        tag: `@${username}`,
+        id: null,
+      });
+    }
+  }
+
+  if (targetUsers.length === 0) {
+    return { targetHints: "", targetUsers: [], mentionedUserIds: Array.from(mentionedUserIds) };
+  }
+
+  const targetLines = targetUsers
+    .map(
+      (t) =>
+        `- Target: "${t.name}" -> Gunakan tag ${t.tag}. (PENTING: Ini adalah NAMA TARGET PENGGUNA DISCORD, BUKAN kata kerja).`
+    )
+    .join("\n");
+
+  const targetHints =
+    `\n\n--- KONTEKS TARGET MENTION DISCORD ---\n` +
+    `Prompt user merujuk ke target pengguna Discord berikut:\n${targetLines}\n` +
+    `ATURAN WAJIB:\n` +
+    `1. Hasil generate HARUS menyebutkan nama dan MENGETAG target menggunakan format ${targetUsers.map((t) => t.tag).join(" / ")}.\n` +
+    `2. DILARANG menggunakan template statis/kaku (jangan kaku selalu di paling depan atau belakang). Tempatkan tag secara luwes, variatif, dan mengalir alami di dalam kalimat/paragraf.\n`;
+
+  return { targetHints, targetUsers, mentionedUserIds: Array.from(mentionedUserIds) };
+}
+
+function _buildSystemPrompt(personality, userId, targetHints = "") {
   const base = getPersonalitySystemPrompt(personality);
   const userMem = aiMemory.formatUserForPrompt(userId);
   const globalMem = aiMemory.formatGlobalForPrompt();
-  if (!userMem && !globalMem) return base;
-  const memoryBlock =
-    `\n\n--- MEMORI TENTANG USER (pake ini buat personalisasi, jangan sebut eksplisit) ---\n` +
-    (userMem ? userMem : "") +
-    (globalMem ? `\n--- GLOBAL NOTES ---\n` + globalMem : "");
-  return base + memoryBlock;
+  let prompt = base + CHAT_CORE_RULES;
+  if (targetHints) {
+    prompt += targetHints;
+  }
+  if (userMem || globalMem) {
+    prompt +=
+      `\n\n--- MEMORI TENTANG USER (pake ini buat personalisasi, jangan sebut eksplisit) ---\n` +
+      (userMem ? userMem : "") +
+      (globalMem ? `\n--- GLOBAL NOTES ---\n` + globalMem : "");
+  }
+  return prompt;
 }
 
 // === Core chat logic (shared by slash + reply) ===
@@ -166,7 +336,11 @@ async function _runChat({
   send, // async (payload) => sentMessage
   sendTyping, // async () => void (typing indicator loop helper)
   source = "slash", // for logging
+  guild = null,
 }) {
+  // Detect target mentions in prompt
+  const { targetHints, targetUsers, mentionedUserIds } = _detectTargetMentions(prompt, guild);
+
   // Determine personality
   let personality;
   if (forcedPersonality) {
@@ -183,7 +357,7 @@ async function _runChat({
 
   // Build messages
   const messages = [
-    { role: "system", content: _buildSystemPrompt(personality, userId) },
+    { role: "system", content: _buildSystemPrompt(personality, userId, targetHints) },
     ...session.messages,
     { role: "user", content: prompt },
   ];
@@ -202,21 +376,32 @@ async function _runChat({
     return;
   }
 
-  // Save to history
-  _pushHistory(session, prompt, reply);
+  // Post-process: clean multi-version if not asked & ensure mention is weaved in
+  const cleanedReply = _cleanSingleResponse(reply, prompt);
+  const finalReply = _ensureMentionInReply(cleanedReply, targetUsers);
+
+  // Save to history (clean version)
+  _pushHistory(session, prompt, finalReply);
 
   // Build final embed (clean — no dropdown, no status footer)
-  const embed = _buildChatEmbed(personality, reply);
+  const embed = _buildChatEmbed(personality, finalReply);
 
-  // Send embed
-  const sent = await send({ embeds: [embed] }).catch(() => null);
+  // Send embed with allowedMentions
+  const sent = await send({
+    embeds: [embed],
+    allowedMentions: {
+      parse: [],
+      users: mentionedUserIds,
+      repliedUser: true,
+    },
+  }).catch(() => null);
   if (sent) {
     _rememberBotReply(session._client || null, userId, sent, session);
   }
 
   // Background: extract facts (non-blocking, errors logged inside)
   if (aiMemory.isMemoryEnabled()) {
-    aiMemory.extractFactsFromMessage(userId, prompt, reply).catch(() => null);
+    aiMemory.extractFactsFromMessage(userId, prompt, finalReply).catch(() => null);
     aiMemory.touchUserSeen(userId);
   }
 }
@@ -364,6 +549,7 @@ module.exports = {
         source: "slash",
         send: async (payload) => interaction.editReply(payload),
         sendTyping: () => stopTyping, // no-op (already started)
+        guild: interaction.guild,
       });
     } finally {
       stopTyping();
@@ -427,6 +613,7 @@ async function handleChatReply(message, client, session) {
         return placeholder.edit(payload).catch(() => null);
       },
       sendTyping: () => stopTyping,
+      guild: message.guild,
     });
   } finally {
     stopTyping();
