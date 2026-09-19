@@ -24,6 +24,9 @@ function recordTrack(guildId, track) {
     uri: track.uri || null,
     length: track.length || 0,
     requester: track.requester?.tag || track.requester?.username || null,
+    // Kept alongside the display name so a row can be attributed to a real user
+    // (per-user profiles aggregate on this id).
+    requesterId: track.requester?.id || null,
     playedAt: Date.now(),
   });
   // Keep max 20

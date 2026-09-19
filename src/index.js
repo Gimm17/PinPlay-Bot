@@ -8,6 +8,7 @@ const { attachMessageHandler } = require("./handlers/messageHandler");
 const { createKazagumo } = require("./music/kazagumo");
 const { attachMusicEvents } = require("./music/events");
 const { readAll, getGuildSettings, flushNow } = require("./utils/storage");
+const userPlayHistory = require("./utils/userPlayHistory");
 const { makeLogger } = require("./utils/logger");
 
 const log = makeLogger(config.logLevel);
@@ -224,15 +225,17 @@ process.on("uncaughtException", (reason) => {
   // State is unknown after an uncaught exception — flush settings and let PM2
   // bring up a clean process rather than continuing in a half-broken state.
   flushNow();
+  userPlayHistory.flushNow();
   process.exit(1);
 });
 
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {
     log.info(`Received ${sig}, shutting down...`);
-    // Flush the debounced guildSettings write BEFORE exiting, otherwise an
-    // `.access mode` change made <500ms ago is silently dropped.
+    // Flush the debounced writes BEFORE exiting, otherwise an `.access mode`
+    // change or the last few tracks of a session are silently dropped.
     flushNow();
+    userPlayHistory.flushNow();
     client.destroy();
     process.exit(0);
   });

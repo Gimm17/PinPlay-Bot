@@ -8,6 +8,7 @@ const { Colors } = require("../utils/colors");
 const { formatMs, thumb } = require("../utils/format");
 const { getAutoplayOn } = require("../utils/autoplay");
 const { setVoiceStatus, clearVoiceStatus, formatTrackStatus } = require("../utils/voiceStatus");
+const userPlayHistory = require("../utils/userPlayHistory");
 
 // Auto-leave when queue empty and 24/7 OFF.
 // Module-level (not per-attach) so play paths outside this file can cancel a
@@ -166,6 +167,21 @@ function attachMusicEvents(client) {
 
     // Record to history
     recordTrack(player.guildId, track);
+
+    // Per-user profile data (top tracks / servers / friends). Guarded: a user
+    // with no requester (autoplay, /aiplaylist with a synthetic requester) has
+    // nothing to attribute, and profile bookkeeping must never break playback.
+    try {
+      if (track?.requester?.id) {
+        userPlayHistory.recordPlay({
+          userId: track.requester.id,
+          guildId: player.guildId,
+          track: { title: track.title, author: track.author, uri: track.uri },
+        });
+      }
+    } catch (e) {
+      log.debug(`[profile] recordPlay failed: ${e?.message || e}`);
+    }
 
     // Mirror the current song into the voice channel's status text, the way
     // other music bots do. Decorative: setVoiceStatus never throws and is

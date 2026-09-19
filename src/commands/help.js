@@ -178,6 +178,16 @@ const COMMANDS = [
     examples: ["/history"],
   },
   {
+    name: "profile",
+    usage: "/profile view [user]",
+    detail:
+      "Profil musik: top lagu, top server, dan top friends. Beda dari /history — data ini " +
+      "tersimpan permanen per user, jadi tetap ada setelah bot restart.\n" +
+      "Top Friends dihitung dari kemiripan lagu yang didengar (bukan riwayat voice channel).\n" +
+      "Owner bisa pakai `/profile reset` untuk menghapus data profilnya sendiri.",
+    examples: ["/profile view", "/profile view user:@someone"],
+  },
+  {
     name: "remove",
     usage: "/remove position:<angka>",
     detail: "Hapus lagu dari queue berdasarkan posisi (1, 2, 3, ...).",
