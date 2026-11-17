@@ -16,3 +16,13 @@ GUIDE-SPOTIFY.md
 DEPLOY.md
 CLAUDE.md
 DRAF-DESIGN/
+
+# Security: ignore secrets, credentials, dumps & backups
+.env.*
+!.env.example
+cpanel.txt
+*CPANEL*.txt
+*cpanel*.txt
+*secret*.txt
+pwsupersecretcpanel.txt
+github-access-token*.txt
